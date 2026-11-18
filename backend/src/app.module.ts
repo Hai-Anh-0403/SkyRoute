@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import * as path from 'path';
+import { DatabaseModule } from './core/database/database.module';
 
 @Controller('health')
 export class HealthController {
@@ -18,6 +19,7 @@ export class HealthController {
       isGlobal: true,
       envFilePath: [path.resolve(process.cwd(), '../.env'), '.env'],
     }),
+    DatabaseModule,
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
   ],

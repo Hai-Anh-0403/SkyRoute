@@ -18,7 +18,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "typeorm-ts-node-commonjs -d src/core/database/data-source.ts",
     "migration:run": "npm run typeorm -- migration:run",
-    "migration:revert": "npm run typeorm -- migration:revert"
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "seed": "ts-node src/core/database/seeds/dalat.seeder.ts"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
@@ -37,6 +38,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^16.6.1",
     "ioredis": "^5.6.0",
     "joi": "^17.13.3",
     "passport": "^0.7.0",
