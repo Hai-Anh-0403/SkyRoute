@@ -1,182 +1,192 @@
 Write DATABASE.md based on the project context above.
 
-## Core Features
-- Auth & User Management (`auth`): `users`, `refresh_tokens`
-- Spatial Discovery & Proximity Radar (`discovery`): `places`
-- Centroid Stay Finder (`stays`): `stays`
-- Interactive Timeline Planner (`trips`): `trips`, `itinerary_items`
-- Weather Sync & Adaptive Plan B (`weather` & `ai-copilot`): `weather_snapshots`, `plan_b_swaps`
+# SkyRoute Database Schema
 
-## Requirements
+## Overview
 
-### 1. Overview
-- Database: PostgreSQL 16 + PostGIS 3.4 Extension (`CREATE EXTENSION IF NOT EXISTS postgis;`)
-- Cache Layer: Redis 7.x (Weather forecast cache with `TTL = 30 minutes`, session & rate limit)
-- ORM: TypeORM (with NestJS v11, utilizing PostGIS `GEOMETRY(Point, 4326)` and parameterized spatial SQL)
-- Naming conventions:
-  - Tables: `snake_case`, plural (`users`, `places`, `stays`, `trips`, `itinerary_items`)
-  - Columns: `snake_case` (`is_outdoor`, `suitable_weather`, `centroid_location`, `weather_alert_flag`)
-  - Foreign keys: `[singular_table]_id` (`user_id`, `trip_id`, `place_id`, `stay_id`)
-  - B-Tree Indexes: `idx_[table]_[column]`
-  - Spatial Indexes: `idx_[table]_[geom_column]` using `GIST` (`idx_places_location`, `idx_stays_location`)
+- **Primary store:** PostgreSQL 16 with PostGIS 3.4. Enable it in the first migration with `CREATE EXTENSION IF NOT EXISTS postgis;`.
+- **Cache:** Redis 7. Weather forecasts are cached for 30 minutes; Redis is not the source of truth for persisted data.
+- **ORM:** TypeORM with parameterized spatial SQL. Do not use `synchronize: true` outside local unit tests.
+- **Conventions:** plural `snake_case` tables; `snake_case` columns; `BIGINT` identity primary keys; `TIMESTAMPTZ` timestamps; foreign keys named `<singular>_id`.
+- **Coordinates:** WGS84 `GEOMETRY(Point, 4326)`. API payloads use `{ lat, lng }`, but PostGIS always receives `ST_MakePoint(lng, lat)`.
 
-### 2. Entities by Feature
+```mermaid
+erDiagram
+  users ||--o{ refresh_tokens : owns
+  users ||--o{ trips : owns
+  trips ||--o{ itinerary_items : contains
+  trips ||--o{ plan_b_swaps : audits
+  places ||--o{ itinerary_items : schedules
+  stays ||--o{ itinerary_items : schedules
+  itinerary_items ||--o{ plan_b_swaps : replaced_in
+  places ||--o{ plan_b_swaps : original_or_replacement
+```
 
-**Auth Feature (`auth`):**
-- `users` (`id`, `email`, `password_hash`, `full_name`, `avatar_url`, `preferences` JSONB, `is_active`, `created_at`, `updated_at`)
-- `refresh_tokens` (`id`, `user_id`, `token_hash`, `device_name`, `ip_address`, `user_agent`, `expires_at`, `is_revoked`, `created_at`) — supports multi-device login
+## Feature ownership
 
-**Discovery & Spatial Radar Feature (`discovery`):**
-- `places` (`id`, `name`, `city`, `category`, `subcategory`, `is_outdoor`, `has_ac`, `suitable_weather` VARCHAR[], `price_level`, `rating`, `address`, `description`, `thumbnail_url`, `location` GEOMETRY(Point, 4326), `is_active`, `created_at`)
-  - `category`: `'attraction' | 'restaurant' | 'cafe'`
-  - `subcategory`: `'hotpot' | 'bbq' | 'noodles' | 'refreshment' | 'museum' | 'nature' | 'check_in' | 'workshop'`
-  - `is_outdoor`: `BOOLEAN` — CRITICAL for detecting rain/extreme heat conflicts and filtering indoor "Plan B" replacements
+| Feature | Tables | Responsibility |
+|---|---|---|
+| `auth` | `users`, `refresh_tokens` | Account profile and multi-device JWT refresh sessions |
+| `discovery` | `places` | POIs, food venues, and spatial radar data |
+| `stays` | `stays` | Accommodation catalogue and centroid-nearest lookup |
+| `trips` | `trips`, `itinerary_items` | Trips and four-slot itinerary timeline |
+| `weather` | `weather_snapshots` | Durable forecast fallback for cached/Open-Meteo data |
+| `ai-copilot` | `plan_b_swaps` | Auditable indoor Plan B replacements |
 
-**Centroid Stay Finder Feature (`stays`):**
-- `stays` (`id`, `name`, `city`, `stay_type`, `price_per_night`, `rating`, `address`, `thumbnail_url`, `location` GEOMETRY(Point, 4326), `amenities` JSONB, `is_active`, `created_at`)
-  - `stay_type`: `'hotel' | 'homestay' | 'resort'`
-  - `location`: indexed with `GIST` to find accommodations closest to `trips.centroid_location`
+## Auth feature
 
-**Interactive Timeline Planner Feature (`trips`):**
-- `trips` (`id`, `user_id`, `title`, `destination_city`, `start_date`, `end_date`, `status`, `centroid_location` GEOMETRY(Point, 4326) NULLABLE, `created_at`, `updated_at`)
-  - `centroid_location`: geometric center $(\bar{x}, \bar{y})$ of all `places` in the trip's itinerary
-- `itinerary_items` (`id`, `trip_id`, `place_id` NULLABLE, `stay_id` NULLABLE, `day_number`, `time_slot`, `order_index`, `distance_from_prev_km`, `is_detour_warning`, `weather_condition`, `temperature_c`, `rain_probability`, `weather_alert_flag`, `note`, `created_at`, `updated_at`)
-  - `time_slot`: `'morning'` (08:00–11:00), `'lunch'` (11:00–13:00), `'afternoon'` (13:00–17:00), `'dinner'` (17:00–22:00)
-  - `weather_alert_flag`: set to `true` automatically when `place.is_outdoor = true` AND `rain_probability >= 60`
+### `users`
 
-**Weather & AI Adaptive Plan B Feature (`weather` & `ai-copilot`):**
-- `weather_snapshots` (`id`, `city`, `forecast_date`, `time_slot`, `temperature_c`, `rain_probability`, `weather_code`, `condition_tag`, `fetched_at`) — DB fallback when Redis cache misses or Open-Meteo is unreachable
-- `plan_b_swaps` (`id`, `trip_id`, `itinerary_item_id`, `original_place_id`, `replacement_place_id`, `rain_probability_at_swap`, `distance_from_prev_km`, `created_at`) — audit trail for 1-click Plan B swaps
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `email` | `VARCHAR(255)` | `NOT NULL`, unique, normalized lowercase |
+| `password_hash` | `VARCHAR(255)` | `NOT NULL`; bcrypt hash only |
+| `full_name` | `VARCHAR(150)` | `NOT NULL` |
+| `avatar_url` | `TEXT` | nullable |
+| `preferences` | `JSONB` | `NOT NULL DEFAULT '{}'::jsonb` |
+| `is_active` | `BOOLEAN` | `NOT NULL DEFAULT TRUE`; soft-delete/access flag |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
 
-### 3. Relationships
-Key relationships:
-- `users` 1:N `refresh_tokens`, `trips`
-- `trips` 1:N `itinerary_items` (`ON DELETE CASCADE`), `plan_b_swaps`
-- `places` 1:N `itinerary_items`
-- `stays` 1:N `itinerary_items`
-- `places` 1:N `plan_b_swaps` (as `original_place_id` and `replacement_place_id`)
+Indexes: unique `uq_users_email` on `email`; `idx_users_active` on `is_active`.
 
-Special cases:
-- **Exclusive Activity Reference in `itinerary_items`:** Each item links to either `place_id` (attraction/food/cafe) OR `stay_id` (check-in/rest at accommodation), enforced via a PostgreSQL `CHECK` constraint `(place_id IS NOT NULL OR stay_id IS NOT NULL)`.
-- **Dynamic Trip Centroid (`trips.centroid_location`):** Recalculated automatically via PostGIS `ST_Centroid(ST_Collect(p.location))` whenever `itinerary_items` are added, removed, or swapped.
-- **Weather Snapshot on `itinerary_items`:** Stores the latest synced `temperature_c`, `rain_probability`, and `weather_alert_flag` directly on each slot item for instant timeline rendering without N+1 queries.
-- **`refresh_tokens` Multi-device Support:**
-  - On logout: revoke specific token (`is_revoked = true`)
-  - On "logout all devices": revoke all tokens for `user_id`
+### `refresh_tokens`
 
-### 4. Conventions
-- Primary key: Auto-increment `SERIAL` / `BIGINT` (`id`)
-- Spatial Coordinate Standard: WGS84 (`SRID 4326`), stored as `GEOMETRY(Point, 4326)`.
-  - **CRITICAL RULE:** PostGIS `ST_MakePoint(longitude, latitude)` ALWAYS takes **longitude ($X$) first, latitude ($Y$) second**.
-- Soft delete: `is_active` flag (`users`, `places`, `stays`), `is_revoked` flag (`refresh_tokens`)
-- Timestamps: `created_at`, `updated_at` (`TIMESTAMPTZ`, TypeORM `@CreateDateColumn` / `@UpdateDateColumn`)
-- Enums & Arrays:
-  - `suitable_weather`: PostgreSQL text array `VARCHAR(50)[]` (e.g., `ARRAY['sunny', 'cloudy', 'rainy', 'cold', 'hot']`)
-  - `time_slot`: `'morning' | 'lunch' | 'afternoon' | 'dinner'`
-  - `trip.status`: `'draft' | 'active' | 'completed' | 'archived'`
-- Token storage: store SHA-256 hashed token (`token_hash`), never plain text
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `user_id` | `BIGINT` | FK → `users(id)` `ON DELETE CASCADE` |
+| `token_hash` | `CHAR(64)` | `NOT NULL`, unique SHA-256 hash; never store the raw token |
+| `device_name` | `VARCHAR(255)` | nullable |
+| `ip_address` | `INET` | nullable |
+| `user_agent` | `TEXT` | nullable |
+| `expires_at` | `TIMESTAMPTZ` | `NOT NULL` |
+| `is_revoked` | `BOOLEAN` | `NOT NULL DEFAULT FALSE` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
 
-### 5. Migration Rules
-- Format: `[timestamp]_[description].ts` (e.g., `1710000000000_enable_postgis_and_init_schema.ts`)
-- First migration MUST execute `CREATE EXTENSION IF NOT EXISTS postgis;`
-- Always reversible (`up` / `down` methods)
-- Never use `synchronize: true` outside local unit test environments
+Indexes: `idx_refresh_tokens_user_expires (user_id, expires_at)` and partial `idx_refresh_tokens_active (user_id) WHERE is_revoked = FALSE`.
 
-## Format
-- Use tables for field definitions
-- Group by feature
-- Include mermaid ERD diagram
-- Max 150-200 lines
+## Discovery feature
 
-## TypeORM & PostGIS-Specific
-- Use `@Column({ type: 'geometry', spatialFeatureType: 'Point', srid: 4326 })` and `@Index({ spatial: true })` for `location` and `centroid_location`
-- **Proximity Radar Query (< 10ms target):** Use `ST_DWithin(place.location::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radiusMeters)` backed by `GIST` index
-- **Centroid Stay Finder Query:** Compute centroid with `ST_Centroid(ST_Collect(p.location))` and query nearest `stays` using the PostGIS KNN distance operator `ORDER BY stay.location <-> :centroidPoint LIMIT 10`
-- **Route Detour Calculation:** Compute consecutive slot distances via `ST_DistanceSphere(prev.location, curr.location) / 1000.0` (flag `is_detour_warning = true` if distance $> 8\text{km}$ intra-city)
-- **Plan B Indoor Fallback Query:** Filter `places` where `is_outdoor = false`, `'rainy' = ANY(suitable_weather)`, and `ST_DWithin` $\le 3000\text{m}$ from the preceding slot's coordinates
+### `places`
 
-## Core Tables & Spatial Schema Details
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `name`, `city` | `VARCHAR(255)`, `VARCHAR(100)` | both `NOT NULL` |
+| `category` | `VARCHAR(50)` | `NOT NULL`; `attraction`, `restaurant`, or `cafe` |
+| `subcategory` | `VARCHAR(50)` | nullable; e.g. `hotpot`, `bbq`, `museum`, `nature`, `workshop` |
+| `is_outdoor`, `has_ac` | `BOOLEAN` | `NOT NULL DEFAULT TRUE`, `NOT NULL DEFAULT FALSE` |
+| `suitable_weather` | `VARCHAR(50)[]` | `NOT NULL DEFAULT '{}'`; e.g. `rainy`, `cold`, `hot` |
+| `price_level`, `rating` | `SMALLINT`, `NUMERIC(2,1)` | defaults `2`, `4.0`; checks `1..3` and `0..5` |
+| `address`, `description`, `thumbnail_url` | `TEXT` | nullable |
+| `location` | `GEOMETRY(Point, 4326)` | `NOT NULL`; `@Index({ spatial: true })` |
+| `is_active` | `BOOLEAN` | `NOT NULL DEFAULT TRUE` |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
 
-### 1. `places` Table Details
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | SERIAL | PK | |
-| name | VARCHAR(255) | NOT NULL | Place name |
-| city | VARCHAR(100) | NOT NULL | e.g., `'Da Lat'`, `'Da Nang'` |
-| category | VARCHAR(50) | NOT NULL | `'attraction'`, `'restaurant'`, `'cafe'` |
-| subcategory | VARCHAR(50) | NULLABLE | `'hotpot'`, `'bbq'`, `'museum'`, `'nature'`, `'refreshment'` |
-| is_outdoor | BOOLEAN | NOT NULL, DEFAULT TRUE | `true` = Outdoor, `false` = Indoor (Plan B eligible) |
-| has_ac | BOOLEAN | DEFAULT FALSE | Air-conditioned space (for $>35^\circ\text{C}$ heatwaves) |
-| suitable_weather | VARCHAR(50)[] | NOT NULL | `ARRAY['sunny', 'cloudy', 'rainy']` |
-| price_level | SMALLINT | DEFAULT 2 | `1`: Budget, `2`: Moderate, `3`: Premium |
-| rating | DECIMAL(2,1) | DEFAULT 4.0 | Average rating (`1.0` – `5.0`) |
-| address | TEXT | NULLABLE | Full street address |
-| location | GEOMETRY(Point, 4326) | NOT NULL | WGS84 Point (`ST_MakePoint(lng, lat)`) |
-| is_active | BOOLEAN | DEFAULT TRUE | Soft delete flag |
-| created_at | TIMESTAMPTZ | DEFAULT CURRENT_TIMESTAMP | |
+Indexes: `idx_places_location GIST (location)`, `idx_places_location_geography GIST ((location::geography))`, `idx_places_city_category_outdoor (city, category, is_outdoor)`, and `idx_places_suitable_weather GIN (suitable_weather)`.
 
-Indexes:
-- `idx_places_location` USING `GIST (location)` — spatial radius & KNN lookup
-- `idx_places_city_category_outdoor` (`city`, `category`, `is_outdoor`) — composite filter for Plan B & Radar
-- `idx_places_suitable_weather` USING `GIN (suitable_weather)` — array containment queries
+## Stays feature
 
-### 2. `stays` Table Details
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | SERIAL | PK | |
-| name | VARCHAR(255) | NOT NULL | Accommodation name |
-| city | VARCHAR(100) | NOT NULL | Destination city |
-| stay_type | VARCHAR(50) | NOT NULL | `'hotel'`, `'homestay'`, `'resort'` |
-| price_per_night | DECIMAL(12,2) | NOT NULL | Nightly rate in VND |
-| rating | DECIMAL(2,1) | DEFAULT 4.0 | Guest rating |
-| address | TEXT | NULLABLE | Street address |
-| location | GEOMETRY(Point, 4326) | NOT NULL | WGS84 Point (`ST_MakePoint(lng, lat)`) |
-| amenities | JSONB | DEFAULT `'[]'` | e.g., `["wifi", "parking", "mountain_view", "heater"]` |
-| is_active | BOOLEAN | DEFAULT TRUE | |
-| created_at | TIMESTAMPTZ | DEFAULT CURRENT_TIMESTAMP | |
+### `stays`
 
-Indexes:
-- `idx_stays_location` USING `GIST (location)` — fast KNN distance to `trips.centroid_location`
-- `idx_stays_city_price` (`city`, `price_per_night`)
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `name`, `city` | `VARCHAR(255)`, `VARCHAR(100)` | both `NOT NULL` |
+| `stay_type` | `VARCHAR(50)` | `NOT NULL`; `hotel`, `homestay`, or `resort` |
+| `price_per_night` | `NUMERIC(12,2)` | `NOT NULL CHECK (price_per_night >= 0)`; VND |
+| `rating` | `NUMERIC(2,1)` | `NOT NULL DEFAULT 4.0 CHECK (rating BETWEEN 0 AND 5)` |
+| `address`, `thumbnail_url` | `TEXT` | nullable |
+| `location` | `GEOMETRY(Point, 4326)` | `NOT NULL`; `@Index({ spatial: true })` |
+| `amenities` | `JSONB` | `NOT NULL DEFAULT '[]'::jsonb` |
+| `is_active` | `BOOLEAN` | `NOT NULL DEFAULT TRUE` |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
 
-### 3. `trips` & `itinerary_items` Table Details
-Table: `trips`
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | SERIAL | PK | |
-| user_id | INT | FK → `users(id)`, NOT NULL | Trip owner |
-| title | VARCHAR(255) | NOT NULL | e.g., `"Đà Lạt 3N2Đ Chữa Lành"` |
-| destination_city | VARCHAR(100) | NOT NULL | Target city |
-| start_date | DATE | NOT NULL | Trip start date |
-| end_date | DATE | NOT NULL | Trip end date |
-| status | VARCHAR(20) | DEFAULT `'active'` | `'draft'`, `'active'`, `'completed'` |
-| centroid_location | GEOMETRY(Point, 4326) | NULLABLE | Geometric center $(\bar{x}, \bar{y})$ of selected places |
-| created_at | TIMESTAMPTZ | DEFAULT CURRENT_TIMESTAMP | |
-| updated_at | TIMESTAMPTZ | DEFAULT CURRENT_TIMESTAMP | |
+Indexes: `idx_stays_location GIST (location)`, `idx_stays_city_price (city, price_per_night)`, and `idx_stays_active (is_active) WHERE is_active = TRUE`.
 
-Table: `itinerary_items`
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| id | SERIAL | PK | |
-| trip_id | INT | FK → `trips(id)` ON DELETE CASCADE | Parent trip |
-| place_id | INT | FK → `places(id)`, NULLABLE | Selected POI / eatery |
-| stay_id | INT | FK → `stays(id)`, NULLABLE | Selected accommodation |
-| day_number | SMALLINT | NOT NULL | `1`, `2`, `3`... |
-| time_slot | VARCHAR(20) | NOT NULL | `'morning'`, `'lunch'`, `'afternoon'`, `'dinner'` |
-| order_index | SMALLINT | NOT NULL | Sort order within the slot (Drag & Drop) |
-| distance_from_prev_km | DECIMAL(5,2) | DEFAULT 0.0 | Distance from previous stop in the same day |
-| is_detour_warning | BOOLEAN | DEFAULT FALSE | `true` if `distance_from_prev_km > 8.0` |
-| temperature_c | DECIMAL(4,1) | NULLABLE | Forecasted slot temperature ($^\circ\text{C}$) |
-| rain_probability | SMALLINT | NULLABLE | Forecasted rain probability (`0` – `100`%) |
-| weather_alert_flag | BOOLEAN | DEFAULT FALSE | `true` when `is_outdoor = true` & `rain_probability >= 60` |
-| note | TEXT | NULLABLE | User note |
+## Trips feature
 
-Indexes:
-- `idx_itinerary_items_trip_day_slot` (`trip_id`, `day_number`, `time_slot`, `order_index`) — timeline rendering & Drag-and-Drop reorder
-- `idx_itinerary_items_weather_alert` (`trip_id`, `weather_alert_flag`) WHERE `weather_alert_flag = true` — partial index for conflicted slots
+### `trips`
 
-### 4. Redis Caching Keys (Complementing PostgreSQL)
-| Key Pattern | Value Type | TTL | Purpose |
-|-------------|------------|-----|---------|
-| `weather:hourly:{city}:{yyyy-mm-dd}` | JSON (Open-Meteo hourly array) | `1800s` (30m) | Avoid redundant external API calls |
-| `trip:centroid:{trip_id}` | JSON `{ lat, lng, updatedAt }` | `3600s` (1h) | Fast centroid stay lookup |
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `user_id` | `BIGINT` | FK → `users(id)` `ON DELETE RESTRICT` |
+| `title`, `destination_city` | `VARCHAR(255)`, `VARCHAR(100)` | both `NOT NULL` |
+| `start_date`, `end_date` | `DATE` | `NOT NULL`; `CHECK (end_date >= start_date)` |
+| `status` | `VARCHAR(20)` | `NOT NULL DEFAULT 'active'`; `draft`, `active`, `completed`, `archived` |
+| `centroid_location` | `GEOMETRY(Point, 4326)` | nullable; recalculated from itinerary places |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
+
+Indexes: `idx_trips_user_status (user_id, status)` and `idx_trips_destination_dates (destination_city, start_date, end_date)`.
+
+### `itinerary_items`
+
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `trip_id` | `BIGINT` | FK → `trips(id)` `ON DELETE CASCADE` |
+| `place_id`, `stay_id` | `BIGINT` | nullable FKs → `places(id)` / `stays(id)`, both `ON DELETE RESTRICT` |
+| `day_number`, `order_index` | `SMALLINT` | `NOT NULL CHECK (day_number > 0)` and `CHECK (order_index >= 0)` |
+| `time_slot` | `VARCHAR(20)` | `NOT NULL`; `morning`, `lunch`, `afternoon`, `dinner` |
+| `distance_from_prev_km` | `NUMERIC(6,2)` | `NOT NULL DEFAULT 0 CHECK (distance_from_prev_km >= 0)` |
+| `is_detour_warning` | `BOOLEAN` | `NOT NULL DEFAULT FALSE`; true when distance is over 8 km |
+| `weather_condition` | `VARCHAR(50)` | nullable weather tag from the latest sync |
+| `temperature_c` | `NUMERIC(4,1)` | nullable |
+| `rain_probability` | `SMALLINT` | nullable `CHECK (rain_probability BETWEEN 0 AND 100)` |
+| `weather_alert_flag` | `BOOLEAN` | `NOT NULL DEFAULT FALSE`; outdoor and rain probability ≥60 |
+| `note` | `TEXT` | nullable |
+| `created_at`, `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
+
+Constraints: `CHECK (num_nonnulls(place_id, stay_id) = 1)` guarantees exactly one scheduled activity reference. Indexes: `idx_itinerary_items_trip_day_slot (trip_id, day_number, time_slot, order_index)` and partial `idx_itinerary_items_weather_alert (trip_id) WHERE weather_alert_flag = TRUE`.
+
+## Weather and AI Copilot features
+
+### `weather_snapshots`
+
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `city`, `forecast_date`, `time_slot` | `VARCHAR(100)`, `DATE`, `VARCHAR(20)` | `NOT NULL`; unique together |
+| `temperature_c` | `NUMERIC(4,1)` | `NOT NULL` |
+| `rain_probability` | `SMALLINT` | `NOT NULL CHECK (rain_probability BETWEEN 0 AND 100)` |
+| `weather_code`, `condition_tag` | `SMALLINT`, `VARCHAR(50)` | `NOT NULL` Open-Meteo code and normalized tag |
+| `fetched_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
+
+Constraint/index: `uq_weather_snapshots_city_date_slot (city, forecast_date, time_slot)`; it supports deterministic fallback lookup.
+
+### `plan_b_swaps`
+
+| Column | Type | Constraints / purpose |
+|---|---|---|
+| `id` | `BIGINT` | PK, generated identity |
+| `trip_id`, `itinerary_item_id` | `BIGINT` | FKs → `trips(id)`, `itinerary_items(id)`; `NOT NULL`, `ON DELETE CASCADE` |
+| `original_place_id`, `replacement_place_id` | `BIGINT` | `NOT NULL` FKs → `places(id)` `ON DELETE RESTRICT` |
+| `rain_probability_at_swap` | `SMALLINT` | `NOT NULL CHECK (rain_probability_at_swap BETWEEN 0 AND 100)` |
+| `distance_from_prev_km` | `NUMERIC(6,2)` | `NOT NULL CHECK (distance_from_prev_km >= 0)` |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
+
+Constraints/indexes: `CHECK (original_place_id <> replacement_place_id)`, `idx_plan_b_swaps_trip_created (trip_id, created_at DESC)`, and `idx_plan_b_swaps_item (itinerary_item_id)`.
+
+## Spatial and lifecycle rules
+
+- Radar uses `ST_DWithin(p.location::geography, anchor::geography, :radius_meters)`. The functional geography GIST index above is required; the geometry GIST index alone does not index that cast.
+- Centroids use `ST_Centroid(ST_Collect(p.location))` after a transaction adds, removes, reorders, or swaps a place. `stays.location <-> centroid` performs KNN candidate ordering; return meter distances with `ST_DistanceSphere`.
+- Compute same-day route distance with `ST_DistanceSphere(prev.location, curr.location) / 1000.0`; set `is_detour_warning` when it exceeds 8 km.
+- Plan B candidates must be active indoor places, support rainy weather, and be within 3,000 m of the preceding stop. Plan B swap, audit insertion, distance recalculation, and centroid update run in one transaction.
+- Soft-delete only `users`, `places`, and `stays` through `is_active`; do not delete referenced catalog records. Refresh sessions are revoked with `is_revoked`.
+
+## Redis keys
+
+| Key | Value / TTL | Purpose |
+|---|---|---|
+| `weather:hourly:{city}:{yyyy-mm-dd}` | Open-Meteo hourly JSON / `1800s` | Prevent duplicate provider calls |
+| `trip:centroid:{trip_id}` | `{ lat, lng, updatedAt }` / `3600s` | Accelerate centroid-stay lookup; invalidate after itinerary changes |
+| `rate-limit:{scope}:{subject}` | counter / policy TTL | API rate limiting |
+
+## Migration rules
+
+- Name migrations `[timestamp]_[description].ts`; e.g. `1710000000000_enable_postgis_and_init_schema.ts`.
+- Every migration implements reversible `up` and `down` methods. Test both directions before merging.
+- TypeORM maps points with `@Column({ type: 'geometry', spatialFeatureType: 'Point', srid: 4326 })`; create spatial and functional indexes explicitly in migrations.

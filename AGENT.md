@@ -1,70 +1,66 @@
 # SkyRoute — Root Agent Context (`AGENT.md`)
 
-> **Read this file at the start of every new session.** It provides the complete project context, architecture boundaries, source-of-truth documents, and `agent-skills` workflow routing for **SkyRoute (Smart Travel Companion)**.
+> Read this file at the start of every session. It defines the project invariants and points to the authoritative contracts for SkyRoute.
 
----
+## Product and architecture
 
-## 1. Project Identity & Core Problem
+SkyRoute is a context-aware, weather-adaptive travel planner. It replaces static itineraries with four connected capabilities:
 
-- **Project Name:** SkyRoute (*Smart Travel Companion: Context-Aware & Weather-Adaptive Travel Recommendation Platform*)
-- **Core Goal:** Replace static travel itineraries and fragmented tools with a **Living & Adaptive Itinerary** that unifies:
-  1. **Discovery & Proximity Radar:** Multi-layer POI & weather-aware food discovery within a $1\text{km}-5\text{km}$ spatial radius (PostGIS `ST_DWithin`).
-  2. **Interactive 4-Slot Timeline:** Drag-and-drop itinerary across `morning` (`08:00–11:00`), `lunch` (`11:00–13:00`), `afternoon` (`13:00–17:00`), and `dinner` (`17:00–22:00`), with route detour warnings ($> 8\text{km}$).
-  3. **Weather-Adaptive Plan B Fallback:** Hourly weather sync (Open-Meteo + Redis 30m cache); flags outdoor activities (`is_outdoor = true`) when rain probability $\ge 60\%$ and enables 1-click AI + PostGIS swap to the nearest indoor alternative ($< 3\text{km}$).
-  4. **Trip Centroid Stay Finder:** Computes the geometric center $(\bar{x}, \bar{y})$ of all selected itinerary places (`ST_Centroid`) and recommends the closest hotels/homestays (`<->` KNN).
+1. **Discovery radar:** search places and weather-aware food within a 1–5 km radius.
+2. **Four-slot timeline:** plan and reorder `morning`, `lunch`, `afternoon`, and `dinner`; warn when consecutive same-day stops exceed 8 km.
+3. **Weather Plan B:** flag an outdoor item at rain probability ≥60% and swap it to a grounded indoor candidate within 3 km.
+4. **Centroid stays:** calculate the center of selected places and recommend nearby accommodation.
 
----
+The system is a feature-based modular monolith:
 
-## 2. Tech Stack & Workspace Map
+- **Backend:** NestJS v11, TypeScript, TypeORM, PostgreSQL 16/PostGIS 3.4, Redis 7, Open-Meteo, and Gemini/OpenAI function calling.
+- **Frontend:** Next.js 15 App Router, React 19, Tailwind, shadcn/ui, TanStack Query v5, Zustand, React Leaflet, and `@dnd-kit`.
+- **Organization:** business features first; shared stateless code in `shared/`, infrastructure/integrations in backend `core/`, and no direct imports of another feature's internals.
 
-- **Architecture:** Feature-based Modular Monolith (strictly **Feature-based**, NOT layer-based).
-- **Backend (`backend/`):** NestJS v11, TypeScript 5.x, TypeORM, PostgreSQL 16 + PostGIS 3.4, Redis 7 (`ioredis`), `@nestjs/schedule`, Open-Meteo API, Gemini/OpenAI Function Calling.
-- **Frontend (`frontend/`):** Next.js 15 (App Router, React 19, TypeScript 5.x), Tailwind CSS, `shadcn/ui`, TanStack Query v5, Zustand, `react-leaflet` (`ssr: false`), `@dnd-kit`.
+## Source-of-truth documents
 
-### Repository Source-of-Truth Documents
-| Scope | File | Purpose |
+| Scope | Document | Use it for |
 |---|---|---|
-| **Domain & Specs** | `share/Readme.md` | Original Vietnamese topic specification, MVP scope, and roadmap |
-| **Database** | `share/DATABASE.md` | PostgreSQL + PostGIS schema, GIST/GIN indexes, Redis cache keys |
-| **API Contract** | `share/API_SPEC.md` | REST `/api/v1` endpoints, error codes (`DISC_001`, `WTHR_002`, etc.), JSON examples |
-| **Backend Context** | `backend/AGENT.md` | Backend rules, PostGIS & AI guardrails, and skill triggers |
-| **Backend Docs** | `backend/BE-ARCHITECTURE.md`, `backend/BE-PROJECT-RULES.md` | NestJS module structure, DI/event rules, coding standards |
-| **Frontend Context** | `frontend/AGENT.md` | Next.js App Router rules, Leaflet SSR & `@dnd-kit` guardrails, skill triggers |
-| **Frontend Docs** | `frontend/FE-ARCHITECTURE.md`, `frontend/FE-PROJECT-RULES.md` | Split-screen Map-Timeline sync, 4-layer map architecture |
-| **Task Plan & Todo** | `tasks/plan.md`, `tasks/todo.md` | Vertical task breakdown, dependencies, acceptance criteria, and progress checklist |
-| **Workflows** | `agent-skills/` | 25 engineering skills (`skills/*/SKILL.md`) & checklists (`references/`) |
+| Product domain | [share/Readme.md](share/Readme.md) | original scope, MVP, and roadmap |
+| Database | [share/DATABASE.md](share/DATABASE.md) | tables, constraints, indexes, Redis keys, spatial rules |
+| API | [share/API_SPEC.md](share/API_SPEC.md) | `/api/v1` contract, payloads, error codes, retry policy |
+| Backend | [backend/AGENT.md](backend/AGENT.md), [BE-PROJECT-RULES.md](backend/BE-PROJECT-RULES.md), [BE-ARCHITECTURE.md](backend/BE-ARCHITECTURE.md) | NestJS boundaries and runtime design |
+| Frontend | [frontend/AGENT.md](frontend/AGENT.md), [FE-PROJECT-RULES.md](frontend/FE-PROJECT-RULES.md), [FE-ARCHITECTURE.md](frontend/FE-ARCHITECTURE.md) | Next.js boundaries and UI/data flow |
+| Delivery | [tasks/plan.md](tasks/plan.md), [tasks/todo.md](tasks/todo.md) | phased tasks and acceptance checks |
 
----
+When documents conflict, the latest contract documents (`DATABASE.md` and `API_SPEC.md`) govern data/API behavior. Update affected documents together when changing a contract.
 
-## 3. Non-Negotiable Architecture & Domain Rules
+## Non-negotiable invariants
 
-1. **Feature-Based Isolation:** All code belongs inside `features/` (`auth`, `discovery`, `stays`, `trips`, `weather`, `ai-copilot` on BE; `auth`, `discovery`, `itinerary-planner`, `weather-fallback`, `stay-finder`, `ai-copilot` on FE). Never import another feature's internal files directly.
-2. **PostGIS Coordinate Order:** `ST_MakePoint(longitude, latitude)` ALWAYS takes **longitude ($X$) first, latitude ($Y$) second** (WGS84 `SRID 4326`). JSON APIs use `{ lat, lng }`.
-3. **AI Anti-Hallucination:** LLM responses MUST be grounded 100% in PostgreSQL/PostGIS via Function Calling (`get_places_by_radius`, `get_weather_forecast`). Never invent place names or addresses.
-4. **Weather Conflict Threshold:** `weather_alert_flag = true` iff `is_outdoor === true && rain_probability >= 60`.
-5. **Next.js Thin Shell:** Keep `frontend/src/app/` strictly for routing/layouts/metadata; load `react-leaflet` only via `next/dynamic(..., { ssr: false })`.
+1. **Feature isolation:** Backend features are `auth`, `discovery`, `stays`, `trips`, `weather`, and `ai-copilot`; frontend features are `auth`, `discovery`, `itinerary-planner`, `weather-fallback`, `stay-finder`, and `ai-copilot`.
+2. **Coordinates:** API JSON is `{ lat, lng }`; PostGIS is always `ST_MakePoint(lng, lat)` in WGS84/SRID 4326.
+3. **Spatial persistence:** PostGIS SQL is parameterized and lives in repositories. Radar geography casts require the functional GIST geography index.
+4. **AI grounding:** LLMs may explain/rank internal tool results only; they never invent a place, address, or `placeId`.
+5. **Weather conflict:** only `isOutdoor === true && rainProbability >= 60` sets an alert.
+6. **Atomic timeline mutations:** reorder and Plan B swap are transactions that keep route distance, detour state, audit record, and centroid consistent.
+7. **Frontend shell:** `frontend/src/app/` remains thin; Leaflet is dynamically loaded with `ssr: false`; TanStack Query owns server data and Zustand owns transient shared UI state.
+8. **API envelope:** success and error shapes must conform to `API_SPEC.md`; do not introduce endpoint-local formats.
 
----
+## Skill routing
 
-## 4. Mandatory `agent-skills` Routing Table
+Before work, read the matching file in `agent-skills/skills/`:
 
-Before starting any task, read and follow the matching `SKILL.md` in `agent-skills/skills/` (or your installed skill):
+| Work type | Required skill |
+|---|---|
+| Requirements or constraints | `interview-me`, `idea-refine`, `spec-driven-development`, `constraint-driven-development` |
+| Planning | `planning-and-task-breakdown` |
+| Database/API/interface contract | `api-and-interface-design` |
+| Next.js/map/timeline UI | `frontend-ui-engineering` |
+| Framework/API verification | `source-driven-development` |
+| Production implementation | `incremental-implementation`, `test-driven-development` |
+| Spatial/auth/transaction/AI decision | `doubt-driven-development` |
+| Debugging/browser investigation | `debugging-and-error-recovery`, `browser-testing-with-devtools` |
+| Security, performance, review | `security-and-hardening`, `performance-optimization`, `code-review-and-quality` |
+| Documentation or release | `documentation-and-adrs`, `shipping-and-launch` |
 
-| Phase / Task Type | Required Skill (`agent-skills/skills/<name>/SKILL.md`) | When to Activate |
-|---|---|---|
-| **Session Start / Routing** | `using-agent-skills` | Unsure which workflow applies |
-| **Clarify Requirements** | `interview-me`, `idea-refine` | Requirements are ambiguous or underspecified |
-| **Spec & Constraints** | `spec-driven-development`, `constraint-driven-development` | Defining new features, PRDs, or quality thresholds |
-| **Task Breakdown** | `planning-and-task-breakdown` | Splitting a feature or phase into atomic tasks |
-| **API & DB Contracts** | `api-and-interface-design` | Designing/changing endpoints, DTOs, or module boundaries |
-| **UI & Map Workspace** | `frontend-ui-engineering` | Building Next.js pages, Timeline DnD, Map layers, or drawers |
-| **Framework Verification** | `source-driven-development` | Verifying NestJS v11, Next.js 15, TypeORM PostGIS, or `@dnd-kit` APIs |
-| **Implementation** | `incremental-implementation`, `test-driven-development` | Writing production code in thin vertical slices with tests first |
-| **High-Stakes Decisions** | `doubt-driven-development` | Spatial queries, transactions, auth, or AI tool-calling logic |
-| **Runtime & Debugging** | `debugging-and-error-recovery`, `browser-testing-with-devtools` | Fixing bugs, inspecting DOM/network/Leaflet runtime behavior |
-| **Review & Hardening** | `code-review-and-quality`, `security-and-hardening`, `performance-optimization`, `code-simplification` | Before merging PRs, auditing OWASP/JWT/PostGIS speed, or refactoring |
-| **Git & Delivery** | `git-workflow-and-versioning`, `documentation-and-adrs`, `shipping-and-launch` | Commits, branches, ADRs, or production readiness |
+## Working agreement
 
-### Sub-Directory Instructions
-- Working on **Backend** (`backend/`): Read [backend/AGENT.md](backend/AGENT.md).
-- Working on **Frontend** (`frontend/`): Read [frontend/AGENT.md](frontend/AGENT.md).
+- Deliver vertical slices, not disconnected horizontal layers.
+- Validate external data and configuration at system boundaries.
+- Test business thresholds, ownership, spatial coordinate order, transaction rollbacks, and AI grounding.
+- Before handoff, run the relevant lint, type-check, tests, and build; record any unverified integration explicitly.

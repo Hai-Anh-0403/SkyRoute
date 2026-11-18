@@ -1,235 +1,172 @@
 Write ARCHITECTURE.md for Backend (Feature-based) based on:
-- Project context above
-- DATABASE.md: 8 tables + Redis cache grouped into 6 features (`auth`, `discovery`, `stays`, `trips`, `weather`, `ai-copilot`)
-- PROJECT-RULES.md: NestJS v11, TypeORM + PostGIS, Redis, `@nestjs/schedule`, LLM Function Calling, feature-based organization
 
-## Requirements
+# SkyRoute Backend Architecture
 
-### 1. System Overview
-- High-level architecture diagram (mermaid)
-- Modular Monolith with feature-based NestJS modules
-- Feature-based organization rationale:
-  - Each feature = 1 self-contained NestJS module (`controller + service + repository + entities + dto`)
-  - Fast in-process communication for PostGIS spatial calculations, weather conflict checks, and AI tool calls
-  - Easy to extract high-load modules (e.g., `weather` poller or `ai-copilot`) into microservices later if needed
+## System overview
 
-System components:
-- Client (Next.js 15 App Router) → NestJS v11 REST API (`/api/v1`)
-- PostgreSQL 16 + PostGIS 3.4 (Spatial engine: `ST_DWithin`, `ST_Centroid`, `ST_DistanceSphere`, KNN `<->`)
-- Redis 7 Cache (Weather forecast TTL = 30m, session & rate limit)
-- External Integrations:
-  - Open-Meteo API (Hourly weather & precipitation probability)
-  - Gemini / OpenAI API (Function Calling / Tool Use grounded 100% in PostGIS data)
+SkyRoute is a NestJS v11 feature-based modular monolith. Features remain in one deployable while sharing an in-process transaction boundary for timeline, weather, spatial, and Plan B workflows. Modules may be extracted later only when a measured load or ownership boundary requires it.
 
-### 2. Folder Structure
+```mermaid
+flowchart LR
+  FE[Next.js client] -->|REST /api/v1| API[NestJS modular monolith]
+  API --> AUTH[auth]
+  API --> DISC[discovery]
+  API --> TRIPS[trips]
+  API --> WEATHER[weather]
+  API --> STAYS[stays]
+  API --> AI[ai-copilot]
+  DISC & TRIPS & STAYS & WEATHER & AI --> PG[(PostgreSQL + PostGIS)]
+  WEATHER & STAYS --> REDIS[(Redis)]
+  WEATHER --> METEO[Open-Meteo]
+  AI --> LLM[Gemini / OpenAI]
 ```
+
+The REST contract is [API_SPEC.md](../share/API_SPEC.md); the persisted model and spatial indexes are [DATABASE.md](../share/DATABASE.md). Neither is duplicated by controller-local types.
+
+## Runtime composition
+
+```text
 src/
-├── main.ts                         # Bootstrap application, global pipes/filters/swagger
-├── app.module.ts                   # Root module, imports core & all feature modules
-├── config/
-│   ├── database.config.ts          # TypeORM + PostGIS configuration
-│   ├── redis.config.ts             # Redis cache settings (TTL 30m)
-│   ├── jwt.config.ts               # JWT access & refresh settings
-│   ├── weather.config.ts           # Open-Meteo base URL & cron thresholds
-│   └── ai.config.ts                # Gemini/OpenAI API keys & model settings
-├── shared/
-│   ├── decorators/
-│   │   ├── current-user.decorator.ts
-│   │   ├── roles.decorator.ts
-│   │   └── public.decorator.ts
-│   ├── filters/
-│   │   └── all-exceptions.filter.ts
-│   ├── guards/
-│   │   ├── jwt-auth.guard.ts
-│   │   ├── roles.guard.ts
-│   │   └── trip-owner.guard.ts
-│   ├── interceptors/
-│   │   ├── transform.interceptor.ts
-│   │   └── logging.interceptor.ts
-│   ├── pipes/
-│   │   └── validation.pipe.ts
-│   ├── utils/
-│   │   ├── geo.util.ts             # toWktPoint(lng, lat), distance formatters
-│   │   ├── time-slot.util.ts       # Maps hours to morning/lunch/afternoon/dinner
-│   │   └── hash.util.ts            # bcrypt & SHA-256 token hashing
-│   └── types/
-│       ├── response.type.ts
-│       ├── coordinates.type.ts
-│       └── pagination.type.ts
+├── main.ts                         # bootstrap, global pipe/filter/interceptor, Swagger
+├── app.module.ts                   # imports core and feature modules
+├── config/                         # typed database, Redis, JWT, weather, and AI config
 ├── core/
-│   ├── database/
-│   │   └── database.module.ts      # TypeORM + PostGIS connection pool
-│   ├── cache/
-│   │   └── redis.module.ts         # ioredis global client & cache wrapper
-│   ├── logger/
-│   │   └── logger.module.ts        # Structured logger setup
-│   └── integrations/
-│       ├── open-meteo.client.ts    # HTTP adapter for Open-Meteo API
-│       └── llm-tool.client.ts      # Gemini/OpenAI Function Calling adapter
+│   ├── database/                   # TypeORM datasource and migrations
+│   ├── cache/                      # Redis module and cache abstraction
+│   ├── integrations/               # OpenMeteoClient, LlmFunctionCallingClient
+│   └── logger/                     # structured logging
+├── shared/
+│   ├── decorators/                 # @CurrentUser, @Roles, @Public
+│   ├── filters/                    # AllExceptionsFilter
+│   ├── guards/                     # JWT, role, and trip-owner guards
+│   ├── interceptors/               # response transform and request logging
+│   ├── pipes/                      # validation and coordinate parsing
+│   ├── types/                      # API envelope, coordinates, pagination
+│   └── utils/                      # stateless geo, time-slot, and hash helpers
 └── features/
-    ├── auth/                       # users, refresh_tokens, JWT
-    ├── discovery/                  # places, Proximity Radar (ST_DWithin), food discovery
-    ├── stays/                      # stays, Trip Centroid calculation, KNN stay finder
-    ├── trips/                      # trips, itinerary_items, 4-slot Drag & Drop timeline
-    ├── weather/                    # weather_snapshots, Cron poller, conflict flagger
-    └── ai-copilot/                 # plan_b_swaps, AI Tool Calling, 1-click Plan B swap
+    ├── auth/ discovery/ stays/ trips/ weather/ ai-copilot/
+    └── <feature>/{dto,entities,repositories,services,tests}/
 ```
 
-### 3. Feature Anatomy
-```
+Global modules are `ConfigModule`, database, cache, `ScheduleModule.forRoot()`, and `EventEmitterModule.forRoot()`. `main.ts` registers the validation pipe, exception filter, and transform interceptor once.
+
+## Feature modules and public contracts
+
+| Module | Owns | Exports | Events consumed / emitted |
+|---|---|---|---|
+| `auth` | users, refresh tokens, JWT session lifecycle | `AuthService` | — |
+| `discovery` | places, radar, food recommendations | `DiscoveryService` | — |
+| `trips` | trips, itinerary items, distance and centroid trigger | `TripsService`, `TimelineService` | emits `trip.items.changed` |
+| `weather` | cache, forecast snapshots, cron, conflict detection | `WeatherService` | consumes `trip.items.changed` |
+| `stays` | stay catalogue and centroid-nearest query | `StaysService` | consumes `trip.items.changed` to invalidate cache |
+| `ai-copilot` | tool calling, ranking, Plan B audits | `AiCopilotService` | emits `trip.items.changed` after successful swap |
+
+Features import only another feature's module and inject its exported service. Importing internal DTOs, entities, repositories, or helpers is forbidden. Use events for asynchronous consequences to avoid `forwardRef()` circular dependencies.
+
+## Feature anatomy
+
+```text
 features/discovery/
 ├── discovery.module.ts
-├── discovery.controller.ts
+├── discovery.controller.ts          # HTTP contract only
 ├── services/
-│   ├── discovery.service.ts        # Multi-layer filter & Proximity Radar logic
-│   └── food-discovery.service.ts   # Weather-aware food matching (hotpot/BBQ vs AC/chilled)
-├── repositories/
-│   └── place.repository.ts         # PostGIS ST_DWithin & ST_DistanceSphere queries
-├── dto/
-│   ├── radar-query.dto.ts
-│   ├── filter-places.dto.ts
-│   └── place-response.dto.ts
-├── entities/
-│   └── place.entity.ts
+│   ├── discovery.service.ts         # filtering and orchestration
+│   └── food-discovery.service.ts    # weather-aware ranking
+├── repositories/place.repository.ts # parameterized PostGIS queries
+├── dto/radar-query.dto.ts
+├── entities/place.entity.ts
 ├── tests/
-│   ├── discovery.controller.spec.ts
-│   └── discovery.service.spec.ts
-└── CONTEXT.md
-
-features/trips/
-├── trips.module.ts
-├── trips.controller.ts
-├── services/
-│   ├── trips.service.ts            # Trip CRUD & centroid trigger
-│   └── timeline.service.ts         # 4-slot Drag & Drop reorder & detour distance calculation
-├── repositories/
-│   ├── trip.repository.ts          # ST_Centroid(ST_Collect(location)) updates
-│   └── itinerary-item.repository.ts
-├── dto/
-│   ├── create-trip.dto.ts
-│   ├── add-itinerary-item.dto.ts
-│   └── reorder-itinerary.dto.ts
-├── entities/
-│   ├── trip.entity.ts
-│   └── itinerary-item.entity.ts
-├── types/
-│   └── time-slot.type.ts           # 'morning' | 'lunch' | 'afternoon' | 'dinner'
-├── tests/
-└── CONTEXT.md
-
-features/ai-copilot/
-├── ai-copilot.module.ts
-├── ai-copilot.controller.ts
-├── services/
-│   ├── ai-copilot.service.ts       # LLM Function Calling orchestrator
-│   ├── contextual-ranking.service.ts # Score = w1*Pref + w2*Weather + w3*Dist + w4*Rating
-│   └── plan-b.service.ts           # Finds indoor candidates (<3km) & executes 1-click swap
-├── repositories/
-│   └── plan-b-swap.repository.ts
-├── dto/
-│   ├── swap-plan-b.dto.ts
-│   └── generate-itinerary.dto.ts
-├── entities/
-│   └── plan-b-swap.entity.ts
-├── tools/
-│   └── travel-tools.definition.ts  # Tool schemas: get_places_by_radius, get_weather_forecast
-├── tests/
-└── CONTEXT.md
+└── CONTEXT.md                       # only when non-obvious decisions need context
 ```
 
-### 4. Request Flow
+`trips` owns trip CRUD and a `TimelineService` for atomic reorders. `weather` owns the poller and snapshot fallback. `ai-copilot` owns `PlanBService`, contextual ranking, tool schemas, and `plan_b_swaps` audit records. `stays` owns KNN lookup but receives only centroid coordinates or uses the public trips contract.
+
+## Request path and responsibilities
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant G as Guard + DTO validation
+  participant CT as Controller
+  participant S as Feature service
+  participant R as Repository
+  participant DB as PostgreSQL/PostGIS or Redis
+  C->>G: HTTP request
+  G->>CT: authenticated, validated input
+  CT->>S: typed command/query
+  S->>R: domain operation
+  R->>DB: parameterized query
+  DB-->>S: typed result
+  S-->>CT: domain result
+  CT-->>C: standardized response envelope
 ```
-Request → Middleware → Guard → Controller → Service → Repository → PostgreSQL (PostGIS) / Redis
-                                    ↓
-                              Response ← TransformInterceptor
+
+- Middleware supplies correlation ID, CORS, cookie parsing, and body parsing.
+- Guards authenticate, authorize, and verify trip ownership before service code runs.
+- Controllers bind HTTP inputs and delegate; they contain no business or spatial logic.
+- Services coordinate domain work, transactions, cache usage, and external clients.
+- Repositories encapsulate TypeORM and all PostGIS SQL; they do not decide business policy.
+
+## Spatial and data architecture
+
+- Points are WGS84 `GEOMETRY(Point, 4326)`. The only conversion helper calls `ST_SetSRID(ST_MakePoint(lng, lat), 4326)`; API input is `{ lat, lng }`.
+- Radar uses `ST_DWithin(location::geography, anchor::geography, radiusMeters)` and the functional GIST index on `(location::geography)`. Exact output distance uses `ST_DistanceSphere`.
+- Centroid is `ST_Centroid(ST_Collect(place.location))` over itinerary **places**, excluding stay entries. Accommodation candidates use KNN `<->` and return true meter distance separately.
+- Redis key `weather:hourly:{city}:{date}` has a 1,800-second TTL. A weather read falls back Redis → Open-Meteo → `weather_snapshots`.
+
+## Plan B swap flow
+
+```mermaid
+flowchart TD
+  A[Protected swap request] --> B[Validate trip ownership and DTO]
+  B --> C[Find active indoor rainy-suitable candidate within 3 km]
+  C --> D{Candidate valid?}
+  D -- No --> E[AI_001]
+  D -- Yes --> F[One database transaction]
+  F --> G[Replace itinerary place]
+  G --> H[Insert plan_b_swaps audit]
+  H --> I[Recalculate route, warning, and centroid]
+  I --> J[Commit and emit trip.items.changed]
+  J --> K[Invalidate centroid cache and re-evaluate weather]
 ```
-Layer responsibilities:
-- Middleware: request correlation ID, CORS, cookie/body parsing
-- Guard: `JwtAuthGuard` (token verification), `TripOwnerGuard` (verifies `trip.user_id === currentUser.id`)
-- Controller: routing, DTO validation, invokes service, returns data
-- Service: domain orchestration, contextual ranking math, AI tool execution, transaction management
-- Repository: encapsulated TypeORM & PostGIS spatial queries (`ST_DWithin`, `<->`, `ST_Centroid`), zero business logic
 
-Example flow 1 — One-Click Plan B Indoor Swap (`POST /trips/:id/items/:itemId/swap-plan-b`):
-1. `JwtAuthGuard` and `TripOwnerGuard` validate user ownership of the trip
-2. `AiCopilotController` validates `SwapPlanBDto` (`replacementPlaceId`)
-3. `PlanBService`:
-   - Verifies conflicted `ItineraryItem` and fetches replacement indoor `Place` (`is_outdoor = false`) via `DiscoveryService`
-   - Starts DB transaction (`QueryRunner`):
-     - Updates `itinerary_items.place_id = replacementPlaceId` and resets `weather_alert_flag = false`
-     - Recalculates `distance_from_prev_km` and `is_detour_warning` for the affected day
-     - Inserts audit record into `plan_b_swaps`
-     - Recalculates `trips.centroid_location` via `ST_Centroid(ST_Collect(location))`
-4. Emits `trip.itinerary.updated` event and returns updated slot item + new `centroidLocation`
+The transaction also clears `weather_alert_flag` because the replacement is indoor. Rollback leaves both itinerary and audit untouched. The LLM can rank or explain candidates but receives and returns only IDs from internal tools; it never invents venue data.
 
-Example flow 2 — Hourly Weather Cron Sync (`WeatherPollerService`):
-1. `@Cron(CronExpression.EVERY_30_MINUTES)` triggers `syncActiveTripsWeather()`
-2. Checks Redis key `weather:hourly:{city}:{date}`; if expired/missing, fetches from Open-Meteo API and caches for 30m
-3. Aggregates hourly forecasts into the 4 daily slots (`morning`, `lunch`, `afternoon`, `dinner`)
-4. Flags `weather_alert_flag = true` on any `itinerary_items` where `place.is_outdoor = true` AND `rain_probability >= 60%`
+## Weather processing
 
-### 5. Cross-feature Communication
+`WeatherPollerService` runs every 30 minutes. It groups hourly Open-Meteo data into `morning`, `lunch`, `afternoon`, and `dinner`, persists a snapshot fallback, and updates itinerary weather fields. A conflict exists only when `place.is_outdoor = true` and `rain_probability >= 60`.
 
-Allowed methods:
-- Module imports (NestJS DI):
-  - `StaysModule` imports `TripsModule` (or receives centroid coords) to query nearest accommodations via PostGIS KNN `<->`
-  - `AiCopilotModule` imports `DiscoveryModule`, `WeatherModule`, and `TripsModule` to execute grounded LLM tool calls and Plan B swaps
-- Shared utilities in `src/shared/` (`geo.util.ts`, `time-slot.util.ts`)
-- Event-based (async via `@nestjs/event-emitter`):
-  - `TripItemsChangedEvent` (`trip.items.changed`) → triggers `StaysService` to invalidate cached centroid stays and `WeatherService` to evaluate slot rain conflicts
+An on-demand `POST /trips/:id/weather-sync` uses the same service path as the poller. External Open-Meteo and LLM responses are validated before use.
 
-Forbidden:
-- Direct internal import: `import { PlaceRepository } from '../discovery/repositories/place.repository'` ❌
-- Must use: Module exports (`exports: [DiscoveryService]`) + DI injection ✅
+## Centroid stay flow
 
-Feature dependencies:
-- `auth`: standalone (no feature dependencies)
-- `discovery`: depends on `weather` (for live temperature/rain in context-aware food recommendations)
-- `weather`: standalone (uses `core/integrations/open-meteo.client.ts` + Redis)
-- `trips`: depends on `discovery` (places), `stays` (stays), emits events to `weather`
-- `stays`: depends on `trips` (reads `centroid_location` to find nearest stays)
-- `ai-copilot`: depends on `discovery`, `weather`, `trips` (orchestrates Tool Calling & Plan B swaps)
+```mermaid
+flowchart LR
+  A[Timeline place mutation] --> B[Recalculate ST_Centroid]
+  B --> C[Persist trips.centroid_location]
+  C --> D[Invalidate trip:centroid cache]
+  D --> E[Query active stays by KNN]
+  E --> F[Return distance-to-centroid and average trip distance]
+```
 
-### 6. Shared vs Core
+An empty trip returns `STAY_002`; it does not invent a centroid. Timeline mutations and Plan B swaps update centroid data before emitting the event.
 
-| Shared (`src/shared/`) | Core (`src/core/`) |
-|------------------------|--------------------|
-| `@CurrentUser()`, `@Roles()`, `@Public()` decorators | TypeORM + PostGIS database connection pool |
-| `JwtAuthGuard`, `RolesGuard`, `TripOwnerGuard` | Redis cache module (`ioredis`) |
-| `AllExceptionsFilter`, `TransformInterceptor` | Open-Meteo HTTP client adapter |
-| `geo.util.ts` (`toWktPoint`, `ST_MakePoint(lng, lat)` helper) | Gemini / OpenAI Function Calling SDK client |
-| `time-slot.util.ts` (4-slot hour boundary mapping) | Structured Logger configuration |
-| Response, Coordinates & Pagination types | Environment config validation (`@nestjs/config`) |
+## Configuration and security
 
-### 7. Configuration Management
+| Area | Required configuration / rule |
+|---|---|
+| Database | `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME` |
+| Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `WEATHER_CACHE_TTL=1800` |
+| Auth | access token 15m, refresh token 7d, separate JWT secrets |
+| Weather | Open-Meteo base URL, rain threshold 60, detour threshold 8 km, Plan B radius 3,000 m |
+| AI | exactly one configured provider key and model name; strict tool schemas |
 
-Environment variables (`.env`):
-- `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
-- `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `WEATHER_CACHE_TTL=1800`
-- `JWT_ACCESS_SECRET`, `JWT_ACCESS_EXPIRES_IN=15m`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN=7d`
-- `OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1`
-- `GEMINI_API_KEY` (or `OPENAI_API_KEY`), `AI_MODEL_NAME`
-- `PORT`, `NODE_ENV`
+All configuration is read through `ConfigService` and validated at startup. Passwords use bcrypt; refresh tokens use SHA-256 hashes and are sent only in secure `httpOnly` cookies. Logs include safe IDs, action, outcome, and duration—not passwords, tokens, or raw sensitive prompts.
 
-Config structure:
-- `config/database.config.ts` → `TypeOrmModuleOptions` (with PostGIS support)
-- `config/redis.config.ts` → Redis connection options
-- `config/weather.config.ts` → Rain threshold (`60%`), detour threshold (`8km`), Plan B radius (`3000m`)
-- Accessed exclusively via `@nestjs/config` `ConfigService`
+## Operational rules
 
-Secrets handling:
-- Never commit `.env` to git
-- Keep `.env.example` updated with dummy placeholders
-- Validate all required env variables on bootstrap using `Joi` / `zod` schema
-
-## Format
-- Mermaid diagrams for system overview, Plan B swap flow, and Centroid calculation flow
-- Folder structure with inline comments
-- Max 150-200 lines
-
-## NestJS & PostGIS-Specific Additions
-- Global modules: `ConfigModule`, `TypeOrmModule`, `RedisModule`, `ScheduleModule.forRoot()`, `EventEmitterModule.forRoot()`
-- Avoid `forwardRef()` circular dependencies by using `EventEmitter2` for cross-feature side effects (`trips` → `weather` / `stays`)
-- Register `ValidationPipe`, `AllExceptionsFilter`, and `TransformInterceptor` globally in `main.ts`
-- Use `QueryRunner` / `DataSource.transaction()` for atomic multi-table updates (Timeline Drag & Drop reorder and Plan B indoor swap)
-- Enforce strict LLM Tool Calling schema so AI responses only reference real `place_id` records queried from PostGIS
+- Swagger at `/api/docs` is generated from controller decorators and must match the public contract.
+- State-changing endpoints are not retry-safe until an atomic idempotency storage design exists.
+- Use `DataSource.transaction()` or `QueryRunner` for every multi-table mutation.
+- Test services with mocked integrations, repositories against PostGIS, and ownership/response contracts end-to-end.
+- A schema or endpoint change must update the migration, [DATABASE.md](../share/DATABASE.md), and [API_SPEC.md](../share/API_SPEC.md) in the same change set.

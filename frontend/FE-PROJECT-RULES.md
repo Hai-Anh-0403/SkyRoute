@@ -1,212 +1,114 @@
 Write PROJECT-RULES.md for Frontend (Feature-based Next.js App Router) based on the project context above.
 
-## Tech Stack
-- Framework: Next.js 15 (App Router, React 19)
-- Language: TypeScript 5.x (strict mode)
-- State management: Zustand (Global UI & Map-Timeline sync) + TanStack Query v5 (Server state & Optimistic UI)
-- Styling: Tailwind CSS + `shadcn/ui` (Radix Primitives) + Lucide Icons
-- Interactive Map: `react-leaflet` (Leaflet.js + OpenStreetMap, loaded via `next/dynamic` with `ssr: false`)
-- Drag & Drop Timeline: `@dnd-kit/core` + `@dnd-kit/sortable`
-- HTTP client: Axios (with centralized auth & error interceptors)
-- Form handling: React Hook Form + Zod
+# SkyRoute Frontend Project Rules
 
-## Requirements
+## Core structure
 
-### 1. Feature Structure
-Keep `src/app/` strictly as a thin routing & layout shell. All domain and UI logic lives inside `src/features/`:
-```
+- Use Next.js 15 App Router, React 19, TypeScript strict mode, Tailwind CSS, shadcn/ui, TanStack Query v5, Zustand, React Leaflet, `@dnd-kit`, Axios, React Hook Form, and Zod.
+- `src/app/` is routing, metadata, layouts, loading, and error boundaries only. Feature code lives in `src/features/`; reusable, domain-neutral code lives in `src/shared/`.
+- Every feature exposes only its public surface through `index.ts`. Do not deep-import another feature.
+
+```text
 src/
-├── app/                        # Next.js App Router (Thin routing & layout shell ONLY)
-│   ├── layout.tsx              # Root layout, fonts, global Providers
-│   ├── providers.tsx           # Client Providers (QueryClientProvider, Toaster)
-│   ├── (marketing)/            # Public SEO routes (Server Components)
-│   │   ├── page.tsx            # Home & Quick City Explorer
-│   │   └── explore/[city]/page.tsx
-│   ├── (auth)/
-│   │   ├── login/page.tsx
-│   │   └── register/page.tsx
-│   └── (workspace)/            # Protected interactive planner routes
-│       └── trips/
-│           ├── page.tsx        # Saved trips dashboard
-│           └── [tripId]/
-│               ├── page.tsx    # Split-Screen Adaptive Planner Workspace
-│               ├── loading.tsx # Workspace skeleton
-│               └── error.tsx   # Route error boundary
+├── app/                            # thin App Router shell
+│   ├── (marketing)/                # public SEO routes
+│   ├── (auth)/                     # login and register routes
+│   └── (workspace)/trips/          # authenticated trip dashboard/workspace
+├── config/                         # typed env and domain constants
 ├── features/
-│   ├── auth/                   # login, register, JWT session handling
-│   ├── discovery/              # Map layers, multi-layer POI/food filters, Proximity Radar
-│   ├── itinerary-planner/      # 4-slot Drag & Drop timeline, route polylines, detour alerts
-│   ├── weather-fallback/       # Hourly weather pills, rain conflict banner, 1-click Plan B drawer
-│   ├── stay-finder/            # Trip Centroid marker, nearest accommodations comparison
-│   └── ai-copilot/             # Grounded AI itinerary generator & smart filter presets
+│   ├── auth/ discovery/ itinerary-planner/
+│   ├── weather-fallback/ stay-finder/ ai-copilot/
 ├── shared/
-│   ├── components/             # Button, Drawer, Badge, Skeleton, SplitScreenLayout
-│   ├── hooks/                  # useDebounce, useGeolocation, useMediaQuery
-│   ├── lib/                    # axios instance, queryClient, routes constants
-│   ├── stores/                 # workspace.store.ts (Map <-> Timeline sync state)
-│   ├── types/                  # common types (Coordinates, TimeSlot, ApiResponse)
-│   └── utils/                  # distance/currency formatters, weather icon mappers
-└── config/
-    └── constants.ts
+│   ├── components/ hooks/ lib/ stores/ types/ utils/
+└── assets/                         # static images and map marker assets
 ```
 
-Each feature folder:
-```
-features/[feature-name]/
-├── components/
-│   ├── TimelineSlotCard.tsx
-│   └── DailyRoutePolyline.tsx
-├── hooks/
-│   └── useReorderTimeline.ts   # TanStack Query hooks (with optimistic updates)
-├── services/
-│   └── trip.service.ts         # Typed API calls
-├── stores/
-│   └── filter.store.ts         # Feature-scoped Zustand store (if needed)
-├── types/
-│   └── trip.types.ts
-├── utils/
-│   └── route.utils.ts
-├── index.ts                    # Barrel exports (public API ONLY)
-└── CONTEXT.md
+```text
+features/<feature>/
+├── components/                     # feature-specific UI
+├── hooks/                          # Query/mutation and UI hooks
+├── services/                       # typed calls through shared Axios
+├── types/                          # feature API/view models
+├── utils/                          # feature-only pure functions
+├── index.ts                        # public exports only
+└── CONTEXT.md                      # non-obvious local decisions, if needed
 ```
 
-### 2. Naming Conventions
-- App Router files: Next.js reserved conventions (`page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `not-found.tsx`)
-- Feature folders: `kebab-case` (`itinerary-planner`, `weather-fallback`, `stay-finder`, `ai-copilot`)
-- Components: `PascalCase` (`TimelineSlotCard.tsx`, `PlanBSwapDrawer.tsx`, `ProximityRadarLayer.tsx`)
-- Hooks: `camelCase` with `use` prefix (`useRadarPlaces.ts`, `usePlanBCandidates.ts`, `useCentroidStays.ts`)
-- Services: `camelCase` with `.service` suffix (`discovery.service.ts`, `trip.service.ts`)
-- Stores: `camelCase` with `.store` suffix (`workspace.store.ts`, `auth.store.ts`)
-- Types: `camelCase` with `.types` suffix (`discovery.types.ts`, `trip.types.ts`)
-- Utils: `camelCase` with `.utils` suffix (`geo.utils.ts`, `weather.utils.ts`)
-- Constants: `UPPER_SNAKE_CASE` (`API_BASE_URL`, `RAIN_ALERT_THRESHOLD = 60`, `RADAR_RADIUS_RANGE = [1, 5]`)
-- Route paths: `UPPER_SNAKE_CASE` in `shared/lib/routes.ts` (`ROUTES.TRIP_WORKSPACE`)
+## Naming and component design
 
-### 3. Feature Rules
-- Feature must be self-contained inside `src/features/[feature-name]/`
-- `src/app/**/page.tsx` files must be thin (< 50 lines): only read route `params`/`searchParams`, define `generateMetadata`, and render exported Feature components
-- Export only via `index.ts` (barrel file)
-- No direct imports between features' internal files
-- Cross-feature communication via:
-  - Global Zustand workspace store (`workspace.store.ts`: `hoveredPlaceId`, `activeDayNumber`, `activeSlot`, `radarAnchorCoords`, `radarRadiusKm`, `activePlanBItemId`)
-  - URL search params (`useSearchParams` from `next/navigation`)
-  - TanStack Query cache invalidation
-- Shared components location: `src/shared/components/`
+- Folders and feature names are `kebab-case`; components are `PascalCase`; hooks start with `use`; services use `*.service.ts`; stores use `*.store.ts`; types use `*.types.ts`.
+- Use App Router reserved names: `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, and `not-found.tsx`.
+- Keep components focused (normally below 200 lines). Split reusable UI, custom hooks, or subcomponents rather than accumulating a large JSX file.
+- Type all props. Avoid `any`, hard-coded route strings, and server field names in view components.
+- Place `'use client'` at the lowest interactive leaf. Server components must not import browser APIs, Zustand hooks, TanStack Query hooks, DnD primitives, or Leaflet.
 
-Feature boundaries for this project:
-- `auth`: login, register, logout, current user state
-- `discovery`: Leaflet map container, category/indoor/weather-aware food filters, Proximity Radar ($1\text{km}-5\text{km}$)
-- `itinerary-planner`: trip creation, multi-day 4-slot Drag & Drop timeline (`morning`, `lunch`, `afternoon`, `dinner`), route distance & detour warning badges
-- `weather-fallback`: slot weather forecast badges, red conflict warning (`isOutdoor && rainProb >= 60%`), 1-click Plan B indoor candidate drawer & swap action
-- `stay-finder`: displays geometric Trip Centroid $(\bar{x}, \bar{y})$ on map and lists nearest `stays` (`hotel`, `homestay`, `resort`)
-- `ai-copilot`: natural language prompt form & grounded AI itinerary preview
+## Feature boundaries and state
 
-### 4. Component Rules (Server vs Client Components)
-- One component per file
-- Co-locate styles (Tailwind), tests (`.test.tsx`)
-- Props typing required (`interface Props {}`)
-- Max 200 lines per component (split sub-components like `WeatherAlertBadge` or custom hooks if larger)
-- Push `'use client'` as far down the component tree as possible (interactive leaves, `@dnd-kit` sortable items, Leaflet layers, Zustand/TanStack Query hooks)
-- **CRITICAL SSR Rule for Leaflet:** Never import `leaflet` or `react-leaflet` in a Server Component. Always wrap the Map entry component with `next/dynamic(() => import('./MapCanvas'), { ssr: false })`
+| State type | Required location | Examples |
+|---|---|---|
+| API/server state | TanStack Query | `['trip', tripId]`, `['places', filters]`, `['plan-b', tripId, itemId]` |
+| Cross-panel UI state | `workspace.store.ts` | hover, selected item, active day, radar anchor/radius, active Plan B item |
+| Session state | `features/auth` store | current user and access token |
+| Shareable workspace state | URL search params | `day`, `mode`, `radius`, `category` |
+| Local component state | `useState` | open drawer, accordion, tooltip |
 
-Component structure:
+- Never copy `places`, `trips`, `stays`, or Plan B candidates into Zustand.
+- Cross-feature freshness uses invalidation, not shared mutable objects. A reorder or Plan B swap invalidates at least `['trip', tripId]` and `['centroid-stays', tripId]`.
+- Feature-to-feature imports use public barrels only. Shared UI cannot contain travel-domain behavior.
+
+## API, auth, and forms
+
+- Configure one shared Axios client with `/api/v1`, `withCredentials: true`, a Bearer-token request interceptor, and a single `AUTH_002` refresh/retry path.
+- Services map typed API envelopes; components never call Axios or `fetch` directly.
+- Use `useQuery` for reads and `useMutation` for writes. Provide loading, empty, success, and error UI for every user-visible query.
+- Treat server errors as `{ code, message, details? }`; show safe user-facing toasts and retain structured error information for recovery.
+- Use React Hook Form and Zod for all forms. Keep API property names camelCase and coordinates `{ lat, lng }`.
+- Do not auto-retry non-idempotent create/action requests after an unknown network error; the v1 backend has no idempotency-key contract.
+
+## Routing and rendering
+
+- Import navigation APIs only from `next/navigation`, never `next/router`.
+- Define paths in `shared/lib/routes.ts`; use `next/link` for normal navigation.
+- Route pages may resolve async `params`, define metadata, and compose exported feature roots. Business logic belongs in feature hooks/services.
+- Use `loading.tsx` or `Suspense` for streaming skeletons and client `error.tsx` boundaries for route errors. A map failure must not make the timeline unusable.
+
 ```tsx
-// 1. 'use client' directive (only if interactive / uses hooks / browser APIs)
-// 2. Imports
-// 3. Types/Interfaces
-// 4. Component
-// 5. Export
+// app/(workspace)/trips/[tripId]/page.tsx
+export default async function TripPage({ params }: { params: Promise<{ tripId: string }> }) {
+  const { tripId } = await params;
+  return <TripWorkspace tripId={Number(tripId)} />;
+}
 ```
 
-### 5. Code Patterns (MUST follow)
+## Map and DnD guardrails
 
-**API calls:**
-- Via `services/*.service.ts` files only (never call `axios` or `fetch` directly inside components)
-- Use TanStack Query hooks (`useQuery`) for data fetching
-- Use `useMutation` for `POST` / `PATCH` / `DELETE` with automatic query invalidation
+- Export the Leaflet entry only through `next/dynamic(() => import('./MapCanvas'), { ssr: false })`. `MapCanvas` is a client component.
+- Use a child `MapViewportController` with `useMap()` and granular Zustand selectors. Memoize marker components; do not remount `MapContainer` when timeline hover changes.
+- Keep map layers explicit: discovery/radar, daily route, Plan B preview, and centroid/stay layer.
+- `DndContext` must use `id="skyroute-timeline-dnd"`. Reorder with `onMutate`, snapshot rollback in `onError`, then invalidate or reconcile server data.
+- Weather alert UI is shown only for `isOutdoor && rainProbability >= 60`. Detour UI is shown only when `isDetourWarning` is true.
 
-**State management:**
-- Local UI state first (`useState`)
-- Server state: TanStack Query (`places`, `trip`, `weather`, `centroid-stays`, `plan-b-candidates`)
-- Cross-panel Map $\leftrightarrow$ Timeline UI state: Zustand (`workspace.store.ts`)
-- Shareable filter & active day state: Next.js `useSearchParams()` (`?day=2&mode=radar&radius=3`)
+## Accessibility, performance, and tests
 
-**Routing (Next.js 15 App Router):**
-- Import navigation hooks from `'next/navigation'` (`useRouter`, `usePathname`, `useSearchParams`, `useParams`) — NEVER from `'next/router'`
-- Define route path builders in `shared/lib/routes.ts` as constants
-- Use `<Link href={...}>` from `'next/link'` for declarative navigation
-- Use `loading.tsx` and `<Suspense>` for route/panel streaming skeletons
-- Use `error.tsx` (`'use client'`) for route-level error boundaries
+- Use shadcn/Radix semantics; provide labels, keyboard operation, focus management, contrast, and reduced-motion-friendly transitions.
+- Use responsive layouts: desktop split workspace; narrow viewports prioritize timeline and make map/drawers accessible without horizontal traps.
+- Debounce radar/filter input, keep query keys stable, and lazy-load heavy map-only UI. Do not optimize by removing error handling or accessibility.
+- Test with Vitest and React Testing Library: form validation, API states, DnD payloads/rollback, weather conflict banner, Plan B mutation, and radar radius behavior.
+- Browser-test Leaflet rendering, map/timeline hover sync, and drag interaction after relevant changes.
 
-**Optimistic UI for Drag & Drop (`@dnd-kit`):**
-- Reordering items across the 4 daily slots (`morning`, `lunch`, `afternoon`, `dinner`) MUST use TanStack Query `onMutate` optimistic cache updates so cards snap immediately without UI lag, rolling back in `onError` if the API call fails
+## Delivery rules
 
-**Error handling:**
-- Next.js `error.tsx` + panel-level Error Boundaries (so a Map error does not crash the Timeline panel)
-- TanStack Query `onError` with Toast notifications (`sonner`)
-- Centralized `401` token refresh in Axios response interceptor
+- Branches: `feature/fe-<feature>-<summary>` or `fix/fe-<feature>-<summary>`.
+- Commits: `feat(<feature>): <description>` or `fix(<feature>): <description>`.
+- Each PR covers one vertical slice/fix, includes map/timeline screenshots or recording when applicable, and passes lint, type-check, tests, and build.
+- Update `API_SPEC.md`, `FE-ARCHITECTURE.md`, and feature `CONTEXT.md` when the change alters a documented contract or architecture decision.
 
-**Form handling:**
-- React Hook Form + Zod schema validation for all forms (Create Trip, AI Prompt Builder, Auth)
+## Do / do not
 
-### 6. Anti-patterns (MUST NOT do)
-- Put business logic or 500-line JSX directly inside `src/app/**/page.tsx`
-- Import `react-leaflet` without `next/dynamic(..., { ssr: false })` (crashes Next.js SSR with `window is not defined`)
-- Import from another feature's internal files (must import from `@/features/[feature]` barrel `index.ts`)
-- API calls directly in components
-- Store server API responses (`places`, `trips`, `stays`) inside Zustand (must stay in TanStack Query cache)
-- Re-mount the entire Leaflet `MapContainer` on every timeline hover (use memoized markers and granular Zustand selectors)
-- Untyped code (`any`) or hardcoded route strings
-
-### 7. Git Workflow
-- Branch naming: `[type]/fe-[feature]-[short-description]`
-  - `feature/fe-discovery-proximity-radar`
-  - `feature/fe-weather-plan-b-drawer`
-  - `fix/fe-itinerary-dnd-optimistic-rollback`
-- Commit message: `[type]([feature]): [description]`
-  - `feat(itinerary-planner): add 4-slot dnd-kit drag and drop reorder`
-  - `feat(weather-fallback): add 1-click Plan B indoor swap modal`
-  - `fix(discovery): wrap Leaflet MapCanvas in next/dynamic with ssr false`
-- PR scope:
-  - One feature vertical slice or fix per PR
-  - Include UI screenshots/recordings for Map & Timeline interactions
-  - Update `CONTEXT.md` if feature state/API contract changes
-
-### 8. Testing
-- Test file location: same folder as component (`[Component].test.tsx`) or `features/[feature]/tests/`
-- What to test:
-  - Drag & Drop slot reordering and detour warning badge rendering (`distanceFromPrevKm > 8.0`)
-  - Red Weather Alert banner rendering when `isOutdoor && rainProbability >= 60`
-  - One-click Plan B indoor candidate selection and swap mutation
-  - Proximity Radar radius slider ($1\text{km}-5\text{km}$) updating query params
-- Tools: Vitest + React Testing Library
-
-## Format
-- Concrete examples for each rule
-- DO vs DON'T comparisons
-- Max 100-150 lines
-
-## Next.js 15 App Router & Leaflet Patterns
-- Navigation imports: `import { useRouter, useParams, useSearchParams, usePathname } from 'next/navigation'`
-- Client-only Map Dynamic Import:
-  ```tsx
-  import dynamic from 'next/dynamic';
-  export const InteractiveMap = dynamic(
-    () => import('./MapCanvas').then((mod) => mod.MapCanvas),
-    { ssr: false, loading: () => <MapSkeleton /> }
-  );
-  ```
-- Route path constants:
-  ```ts
-  // shared/lib/routes.ts
-  export const ROUTES = {
-    HOME: '/',
-    LOGIN: '/login',
-    REGISTER: '/register',
-    EXPLORE_CITY: (city: string) => `/explore/${encodeURIComponent(city)}`,
-    TRIPS: '/trips',
-    TRIP_WORKSPACE: (tripId: number | string) => `/trips/${tripId}`,
-  } as const;
-  ```
-- `@dnd-kit` SSR Hydration safety: always pass a deterministic `id="skyroute-timeline-dnd"` to `<DndContext>`
-- Memoize custom Leaflet markers (`React.memo`) and use a child `<MapViewportController />` component with `useMap()` to smoothly `flyTo()` coordinates when `workspace.store` changes
+| Do | Do not |
+|---|---|
+| Call `useReorderTimeline` from `TimelineBoard` | Call Axios from a sortable card |
+| Store `activeDayNumber` in Zustand | Store the complete trip response in Zustand |
+| Dynamically load `MapCanvas` | Import Leaflet in a server route/page |
+| Import `@/features/discovery` | Import another feature's `components/MapCanvas` directly |
+| Roll back an optimistic reorder on error | Leave visually reordered cards after server rejection |

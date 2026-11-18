@@ -1,284 +1,189 @@
 Write ARCHITECTURE.md for Frontend (Feature-based Next.js App Router) based on:
-- Project context above
-- API_SPEC.md: REST API (`/api/v1`) with 6 features (`auth`, `discovery`, `stays`, `trips`, `weather`, `ai-copilot`), JWT auth, spatial radar & Plan B swap conventions
-- FE PROJECT-RULES.md: Next.js 15 (App Router, TypeScript), Zustand + TanStack Query v5, Tailwind + `shadcn/ui`, `react-leaflet` (`ssr: false`), `@dnd-kit`, feature-based structure
 
-## Requirements
+# SkyRoute Frontend Architecture
 
-### 1. Overview
-- Feature-based Split-Workspace Architecture: `src/app/` serves strictly as a thin Next.js routing shell while `src/features/` contains self-contained domain modules
-- Tech stack justification:
-  - Next.js 15 (App Router): SSR & `generateMetadata` for SEO-friendly city guides and shareable trip links (`/trips/[tripId]/share`), combined with Client Component islands (`'use client'`) for the interactive planner workspace
-  - TypeScript (strict mode): end-to-end type safety for coordinates (`{ lat, lng }`), time slots, and API payloads
-  - TanStack Query v5: server state caching, optimistic Drag & Drop updates (`onMutate`), and automatic cross-feature query invalidation (e.g., swapping a Plan B place automatically invalidates Centroid Stays)
-  - Zustand: high-frequency 60fps synchronization between the Timeline Panel and the Interactive Map (`hoveredPlaceId`, `activeDayNumber`, `radarAnchorCoords`) without re-rendering the entire page
-  - React Leaflet + OpenStreetMap: zero-cost multi-layer spatial visualization (POIs, Proximity Radar circle, daily route polylines, Trip Centroid pin), loaded client-side via `next/dynamic({ ssr: false })`
-  - `@dnd-kit`: accessible multi-container drag-and-drop across the 4 daily time slots (`morning`, `lunch`, `afternoon`, `dinner`)
-  - Tailwind CSS + `shadcn/ui`: consistent design system, drawers, dialogs, and skeletons
+## Overview
 
-### 2. Folder Structure
+The frontend is a feature-based Next.js 15 application. App Router routes provide SEO, layouts, metadata, loading, and error boundaries; self-contained features deliver the interactive travel workspace. Server components render public shells; client islands handle maps, drag-and-drop, forms, and synchronized workspace UI.
+
+```mermaid
+flowchart LR
+  R[App Router thin shell] --> F[Feature roots]
+  F --> Q[TanStack Query server state]
+  F --> Z[Zustand workspace UI state]
+  Q --> S[Typed feature services]
+  S --> A[Axios /api/v1]
+  A --> B[NestJS API]
+  Z --> M[Leaflet map]
+  Z --> T[Timeline workspace]
 ```
+
+| Technology | Architectural role |
+|---|---|
+| Next.js App Router | SEO/public rendering, route composition, metadata, loading/error boundaries |
+| TypeScript strict mode | contract safety for API payloads, IDs, coordinates, and slots |
+| TanStack Query v5 | API cache, mutations, optimistic timeline updates, invalidation |
+| Zustand | low-latency map/timeline UI synchronization only |
+| React Leaflet | client-only map layers on OpenStreetMap |
+| `@dnd-kit` | accessible four-slot timeline sorting |
+| Tailwind + shadcn/ui | shared design primitives, drawers, dialogs, feedback |
+
+## Runtime structure
+
+```text
 src/
-├── app/                            # Next.js 15 App Router (Thin routing shell ONLY)
-│   ├── layout.tsx                  # Root HTML layout, fonts, Providers wrapper
-│   ├── providers.tsx               # QueryClientProvider, Toaster, ThemeProvider
-│   ├── (marketing)/                # Public SEO routes (Server Components)
-│   │   ├── layout.tsx              # Public Header + Footer layout
-│   │   ├── page.tsx                # Landing & Quick City Explorer
-│   │   └── explore/[city]/page.tsx # City POI & food showcase
-│   ├── (auth)/                     # Centered auth card layout
-│   │   ├── layout.tsx
-│   │   ├── login/page.tsx
-│   │   └── register/page.tsx
-│   └── (workspace)/                # Protected planner routes
-│       ├── layout.tsx              # AuthGuard + Workspace Topbar
-│       └── trips/
-│           ├── page.tsx            # User's saved trips dashboard
-│           └── [tripId]/
-│               ├── page.tsx        # Split-Screen Adaptive Workspace (Timeline + Map)
-│               ├── loading.tsx     # Split-screen skeleton loader
-│               └── error.tsx       # Route error boundary
-├── config/
-│   ├── constants.ts                # API_BASE_URL, RAIN_THRESHOLD (60%), SLOT_LABELS
-│   └── env.ts                      # Typed NEXT_PUBLIC_* env variables
+├── app/
+│   ├── layout.tsx                  # fonts and root providers
+│   ├── providers.tsx               # QueryClient, theme, toast providers
+│   ├── (marketing)/                # / and /explore/[city]
+│   ├── (auth)/                     # /login and /register
+│   └── (workspace)/trips/          # /trips and /trips/[tripId]
+├── config/                         # typed public env and constants
 ├── shared/
-│   ├── components/
-│   │   ├── ui/                     # Button, Badge, Drawer, Dialog, Slider (shadcn/ui)
-│   │   ├── feedback/               # Toast, Skeleton, EmptyState, ErrorBoundary
-│   │   └── layout/                 # SplitScreenLayout, Navbar
-│   ├── hooks/
-│   │   ├── useDebounce.ts
-│   │   ├── useGeolocation.ts       # Browser GPS hook for Proximity Radar
-│   │   └── useMediaQuery.ts
-│   ├── lib/
-│   │   ├── axios.ts                # Axios instance with JWT refresh interceptor
-│   │   ├── queryClient.ts          # TanStack Query client config
-│   │   └── routes.ts               # Type-safe route constants (ROUTES)
-│   ├── stores/
-│   │   └── workspace.store.ts      # Map <-> Timeline sync Zustand store
-│   ├── types/
-│   │   ├── api.types.ts            # ApiResponse, PaginatedResponse, SpatialMeta
-│   │   └── geo.types.ts            # Coordinates ({ lat, lng }), TimeSlotType
-│   └── utils/
-│       ├── format.utils.ts         # formatCurrencyVnd, formatDistanceKm
-│       └── weather.utils.ts        # Maps weather codes & rain % to icons/colors
+│   ├── components/{ui,feedback,layout}/
+│   ├── hooks/                      # browser-neutral reusable hooks
+│   ├── lib/                        # Axios, query client, routes
+│   ├── stores/workspace.store.ts
+│   ├── types/                      # API envelope, geo, pagination
+│   └── utils/                      # formatting and weather display helpers
 ├── features/
-│   ├── auth/
-│   ├── discovery/
-│   ├── itinerary-planner/
-│   ├── weather-fallback/
-│   ├── stay-finder/
-│   └── ai-copilot/
-└── assets/
-    ├── markers/                    # Custom SVG map pins (Attraction, Food, Stay, Centroid)
-    └── images/
+│   ├── auth/ discovery/ itinerary-planner/
+│   ├── weather-fallback/ stay-finder/ ai-copilot/
+└── assets/{markers,images}/
 ```
 
-### 3. Feature Anatomy
+`src/app/` imports only feature public barrels and shared layout primitives. Feature internals are never imported across feature boundaries.
+
+## Route composition
+
+| Route | Rendering role | Feature root |
+|---|---|---|
+| `/` | public, server-rendered landing and quick explorer | marketing/discovery entry |
+| `/explore/[city]` | public city guide with metadata | discovery and stays views |
+| `/login`, `/register` | public auth forms | auth |
+| `/trips` | authenticated trip dashboard | itinerary-planner |
+| `/trips/[tripId]` | protected split workspace | itinerary-planner + discovery |
+
+```tsx
+// app/(workspace)/trips/[tripId]/page.tsx
+import { TripWorkspace } from '@/features/itinerary-planner';
+
+export default async function Page({ params }: { params: Promise<{ tripId: string }> }) {
+  const { tripId } = await params;
+  return <TripWorkspace tripId={Number(tripId)} />;
+}
 ```
+
+The workspace composition may use the discovery public map export, but the route itself owns no query, mutation, or map logic.
+
+## Feature anatomy
+
+```text
 features/discovery/
 ├── components/
-│   ├── InteractiveMap.tsx          # next/dynamic({ ssr: false }) wrapper
-│   ├── MapCanvas.tsx               # 'use client' Leaflet MapContainer + 4 vector layers
-│   ├── MapViewportController.tsx   # Subscribes to workspace.store to flyTo() coords
-│   ├── ProximityRadarControl.tsx   # 1km - 5km radius slider & anchor toggle
-│   ├── MultiLayerFilterBar.tsx     # Outdoor/Indoor, Category, Weather-aware food chips
-│   └── PlaceMarkerCard.tsx
-├── hooks/
-│   ├── usePlaces.ts                # useQuery for filtered places
-│   ├── useRadarPlaces.ts           # useQuery for GET /places/radar
-│   └── useWeatherFood.ts           # useQuery for GET /places/food-recommendations
-├── services/
-│   └── discovery.service.ts
-├── types/
-│   └── discovery.types.ts
-├── index.ts                        # Export public components & hooks
-└── CONTEXT.md
-
-features/itinerary-planner/
-├── components/
-│   ├── TripHeader.tsx
-│   ├── DayTabs.tsx                 # Day 1, Day 2, Day 3 selector
-│   ├── TimelineBoard.tsx           # @dnd-kit DndContext with 4 droppable time slots
-│   ├── TimeSlotColumn.tsx          # Morning (8-11h), Lunch (11-13h), Afternoon (13-17h), Dinner (17-22h)
-│   ├── TimelineItemCard.tsx        # Sortable card with detour warning & weather badge
-│   └── DailyRoutePolyline.tsx      # Connects day's stops on map (dashed red if >8km detour)
-├── hooks/
-│   ├── useTripDetail.ts            # useQuery for GET /trips/:id
-│   ├── useAddTimelineItem.ts       # useMutation for POST /trips/:id/items
-│   └── useReorderTimeline.ts       # useMutation with optimistic update for PATCH /trips/:id/items/reorder
-├── services/
-│   └── trip.service.ts
-├── types/
-│   └── trip.types.ts
-├── index.ts
-└── CONTEXT.md
-
-features/weather-fallback/
-├── components/
-│   ├── SlotWeatherBadge.tsx        # Displays Temp °C, Weather Icon, Rain %
-│   ├── WeatherConflictBanner.tsx   # Red alert when isOutdoor && rainProbability >= 60%
-│   ├── PlanBSwapDrawer.tsx         # Displays 2-3 nearest Indoor alternatives (<3km)
-│   └── PlanBCandidateCard.tsx      # 1-click "Swap to Indoor" action card
-├── hooks/
-│   ├── useSyncTripWeather.ts       # useMutation for POST /trips/:id/weather-sync
-│   ├── usePlanBCandidates.ts       # useQuery for GET /trips/:id/items/:itemId/plan-b-candidates
-│   └── useSwapPlanB.ts             # useMutation for POST /trips/:id/items/:itemId/swap-plan-b
-├── services/
-│   └── weather-fallback.service.ts
-├── types/
-│   └── weather-fallback.types.ts
-├── index.ts
-└── CONTEXT.md
-
-features/stay-finder/
-├── components/
-│   ├── CentroidMapPin.tsx          # Renders geometric center (x̄, ȳ) star pin on Leaflet map
-│   ├── CentroidStayDrawer.tsx      # Slide-over panel comparing nearest hotels/homestays
-│   └── StayComparisonCard.tsx      # Shows distanceToCentroidKm, pricePerNight, amenities
-├── hooks/
-│   └── useCentroidStays.ts         # useQuery for GET /trips/:tripId/centroid-stays
-├── services/
-│   └── stay.service.ts
-├── types/
-│   └── stay.types.ts
-├── index.ts
-└── CONTEXT.md
+│   ├── InteractiveMap.tsx          # dynamic client-only map export
+│   ├── MapCanvas.tsx               # Leaflet MapContainer and layers
+│   ├── MapViewportController.tsx   # selector-driven flyTo/fitBounds
+│   ├── ProximityRadarControl.tsx
+│   └── MultiLayerFilterBar.tsx
+├── hooks/{usePlaces,useRadarPlaces,useWeatherFood}.ts
+├── services/discovery.service.ts
+├── types/discovery.types.ts
+└── index.ts
 ```
 
-### 4. Data Flow
-```
-User Action → Client Component → Hook (TanStack Query) → Feature Service → Axios → NestJS API
-                                         ↓
-                        Optimistic Cache / Invalidation + Zustand Sync
-                                         ↓
-                        Timeline UI + Leaflet Map Re-render in Sync
-```
-Example 1 — Drag & Drop Timeline Reorder (`@dnd-kit`):
-1. User drags an activity card from `Day 1 - Morning` to `Day 1 - Afternoon`
-2. `TimelineBoard` `onDragEnd` calls `useReorderTimeline().mutate(newOrderPayload)`
-3. `onMutate` optimistically updates `['trip', tripId]` cache so the card snaps immediately
-4. `trip.service.reorderItems()` sends `PATCH /api/v1/trips/:id/items/reorder`
-5. Backend recalculates `distanceFromPrevKm`, `isDetourWarning`, slot weather alerts, and `centroidLocation`
-6. On success: `['trip', tripId]` and `['centroid-stays', tripId]` caches update; `DailyRoutePolyline` and `CentroidMapPin` on the map re-draw automatically
+The same anatomy applies to other features. `itinerary-planner` owns `TimelineBoard`, slot columns, route polylines, and reorder hooks. `weather-fallback` owns forecast badges and Plan B UI. `stay-finder` owns centroid pin/drawer. `ai-copilot` owns prompt and proposal UI.
 
-Example 2 — One-Click Plan B Weather Swap:
-1. Slot `Day 1 - Afternoon` (`Đồi Chè Cầu Đất - Outdoor`) shows a red `WeatherConflictBanner` (`Rain 75%`)
-2. User clicks **"Kích hoạt Kế hoạch B (Find Indoor Plan B)"**
-3. `workspace.store` sets `activePlanBItemId = 103` and pans the Map to the preceding lunch slot's coordinates with a $3\text{km}$ search ring
-4. `PlanBSwapDrawer` opens and calls `usePlanBCandidates(tripId, 103)` → fetches top 2–3 indoor places (`Bảo tàng Lâm Đồng - 1.2km`)
-5. User clicks **"Hoán đổi ngay (1-Click Swap)"** → `useSwapPlanB().mutate({ replacementPlaceId: 88 })`
-6. On success: red weather alert clears, timeline card updates to `Bảo tàng Lâm Đồng (Indoor)`, and `['centroid-stays', tripId]` refreshes
+## API and data flow
 
-### 5. Cross-feature Communication
-
-| Method | Use case | Example |
-|--------|----------|---------|
-| `workspace.store.ts` (Zustand) | Hover/Select sync between Timeline & Map | Hovering `TimelineItemCard` sets `hoveredPlaceId` → pulses marker on Map |
-| `workspace.store.ts` (Zustand) | Proximity Radar anchor & radius | `radarAnchorCoords` + `radarRadiusKm` ($1\text{km}-5\text{km}$) shared between Map & Filter Panel |
-| TanStack Query Cache Invalidation | Cross-feature data freshness | Adding/swapping an item in `itinerary-planner` or `weather-fallback` invalidates `['centroid-stays', tripId]` in `stay-finder` |
-| Next.js URL Search Params | Shareable workspace view state | `/trips/12?day=2&mode=radar&radius=3&category=restaurant` |
-
-Feature dependencies:
-- `auth`: standalone (provides user session)
-- `discovery`: reads `workspace.store` (radar anchor, active filters)
-- `itinerary-planner`: reads `workspace.store` (active day), invalidates `stay-finder` & `weather-fallback` queries
-- `weather-fallback`: reads/updates `itinerary-planner` cache (`['trip', tripId]`)
-- `stay-finder`: reads `['trip', tripId]` `centroidLocation` and fetches `['centroid-stays', tripId]`
-- `ai-copilot`: populates `['trip', tripId]` and triggers map bounds fit
-
-### 6. Routing Structure (Next.js 15 App Router)
-
-Public routes (Server-rendered for fast initial load & SEO):
-- `/` → Landing page & Quick City Explorer
-- `/explore/[city]` → Public city POI, weather-aware food & stay guide (e.g., `/explore/da-lat`)
-- `/login` → Login page
-- `/register` → Register page
-
-Protected routes (Authenticated user workspace):
-- `/trips` → User's saved trips dashboard (`CreateTripModal`, trip cards)
-- `/trips/[tripId]` → Main Split-Screen Adaptive Planner Workspace (Left: `TimelineBoard` + `PlanBSwapDrawer` + `CentroidStayDrawer`; Right: `InteractiveMap` + `ProximityRadarControl`)
-
-Route constants (`shared/lib/routes.ts`):
-```ts
-export const ROUTES = {
-  HOME: '/',
-  LOGIN: '/login',
-  REGISTER: '/register',
-  EXPLORE_CITY: (city: string) => `/explore/${encodeURIComponent(city)}`,
-  TRIPS: '/trips',
-  TRIP_WORKSPACE: (tripId: number | string) => `/trips/${tripId}`,
-} as const;
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant C as Client component
+  participant H as Query/mutation hook
+  participant S as Feature service
+  participant A as Axios
+  participant B as API
+  U->>C: action
+  C->>H: typed event
+  H->>S: query or mutation
+  S->>A: typed request
+  A->>B: /api/v1
+  B-->>A: standard envelope
+  A-->>H: data or typed API error
+  H-->>C: cached state/update
 ```
 
-Next.js App Router Workspace Page pattern (`src/app/(workspace)/trips/[tripId]/page.tsx`):
-```tsx
-import { SplitScreenLayout } from '@/shared/components/layout/SplitScreenLayout';
-import { TimelineWorkspacePanel } from '@/features/itinerary-planner';
-import { InteractiveMap } from '@/features/discovery';
+`shared/lib/axios.ts` uses `/api/v1`, `withCredentials`, attaches the access token, refreshes once on `AUTH_002`, and unwraps `{ code, message, details }`. Feature services expose typed methods; hooks define query keys and invalidation. Components do not issue HTTP calls directly.
 
-interface PageProps {
-  params: Promise<{ tripId: string }>;
-}
+### Query-key ownership
 
-export default async function TripWorkspacePage({ params }: PageProps) {
-  const { tripId } = await params;
-  return (
-    <SplitScreenLayout
-      leftPanel={<TimelineWorkspacePanel tripId={Number(tripId)} />}
-      rightPanel={<InteractiveMap tripId={Number(tripId)} />}
-    />
-  );
-}
+| Data | Query key | Invalidate after |
+|---|---|---|
+| Trip detail | `['trip', tripId]` | item create, reorder, edit, removal, weather sync, Plan B swap |
+| Centroid stays | `['centroid-stays', tripId]` | any selected place mutation or Plan B swap |
+| Radar places | `['radar-places', filters]` | filter/anchor/radius change |
+| Plan B candidates | `['plan-b', tripId, itemId]` | weather sync or completed swap |
+| Weather forecast | `['weather', city, date]` | explicit refresh only |
+
+## State and map/timeline synchronization
+
+```mermaid
+flowchart TD
+  CARD[Timeline card hover/select] --> STORE[workspace.store]
+  STORE --> MARKER[Marker highlight / viewport controller]
+  STORE --> PANEL[Active day / Plan B drawer]
+  FILTER[Radar anchor/radius control] --> STORE
+  STORE --> QUERY[Radar query key]
+  QUERY --> LAYER[Discovery/radar layer]
+  TRIP[Trip query cache] --> ROUTE[Daily route layer]
+  TRIP --> CENTROID[Centroid/stay layer]
 ```
 
-### 7. State Management Strategy
+Zustand contains `hoveredPlaceId`, `selectedItemId`, `activeDayNumber`, `radarAnchorCoords`, `radarRadiusKm`, and `activePlanBItemId`. It never owns API responses. URL search params hold shareable view state such as `day`, `mode`, `radius`, and `category`.
 
-| State Type | Location | Tool | Example |
-|------------|----------|------|---------|
-| Server state | Feature hooks | TanStack Query v5 | `['places', filters]`, `['trip', tripId]`, `['centroid-stays', tripId]`, `['plan-b', itemId]` |
-| Map $\leftrightarrow$ Timeline Sync | `shared/stores/workspace.store.ts` | Zustand | `hoveredPlaceId`, `selectedItemId`, `activeDayNumber`, `radarAnchorCoords`, `radarRadiusKm`, `activePlanBItemId` |
-| Auth state | `features/auth/stores/auth.store.ts` | Zustand | `user`, `accessToken`, `isAuthenticated` |
-| URL state | App Router URL | `useSearchParams()` | `day=1`, `mode=radar\|stays\|ai`, `category=restaurant` |
-| Form state | Form component | React Hook Form + Zod | Create Trip form, AI Copilot prompt form |
-| Local UI state | Component | `useState` | Tooltip open, accordion expand |
+`MapCanvas` has four isolated layers: discovery/radar circle and POIs; active-day route polylines; 3 km Plan B candidate preview; and centroid/stay pins. Custom markers are memoized. `MapViewportController` subscribes to granular selectors so the container is not remounted during hover events.
 
-### 8. API Layer
+## Optimistic timeline reorder
+
+1. `TimelineBoard` uses `<DndContext id="skyroute-timeline-dnd">` and computes the complete reorder payload.
+2. `useReorderTimeline` snapshots `['trip', tripId]` in `onMutate` and updates the cache so the card snaps immediately.
+3. The service sends `PATCH /trips/:id/items/reorder`.
+4. On error, the hook restores the snapshot and displays an actionable toast; on settlement it invalidates trip and centroid-stay keys.
+5. The response redraws route warnings, weather badges, and centroid pin from server truth.
+
+## Plan B interaction
+
+```mermaid
+sequenceDiagram
+  participant T as Timeline card
+  participant W as Weather fallback
+  participant Z as Workspace store
+  participant Q as Query cache
+  participant M as Map
+  T->>W: open conflict action
+  W->>Z: set activePlanBItemId
+  Z->>M: show 3 km preview layer
+  W->>Q: fetch plan-b candidates
+  Q-->>W: grounded candidates
+  W->>Q: swapPlanB mutation
+  Q-->>T: invalidate trip and centroid stays
+  Q-->>M: redraw route and centroid
 ```
-shared/lib/axios.ts (Base HTTP client)
-├── Base URL (/api/v1) & withCredentials: true (for refresh_token cookie)
-├── Request interceptor: attach Bearer accessToken
-├── Response interceptor: auto-refresh on 401 AUTH_002
-├── Error interceptor: unwrap standardized { code, message, details }
-    ↓
-features/[feature]/services/[feature].service.ts (Feature service)
-├── Typed endpoint methods (getRadarPlaces, reorderItems, swapPlanB, getCentroidStays)
-    ↓
-features/[feature]/hooks/use[Action].ts (TanStack Query hook)
-├── useQuery / useMutation with queryKey conventions & cache invalidation
-    ↓
-features/[feature]/components/[Component].tsx ('use client' UI)
-```
 
-### 9. Shared vs Features
+Render the conflict action only when the API provides `isOutdoor && rainProbability >= 60`. The swap drawer treats candidates as server data; it never derives or invents replacement locations in the browser.
 
-| Shared (`src/shared/`) | Features (`src/features/`) |
-|------------------------|----------------------------|
-| `Button`, `Drawer`, `Dialog`, `Badge`, `Slider` | `TimelineBoard`, `PlanBSwapDrawer`, `CentroidStayDrawer`, `ProximityRadarControl` |
-| `useDebounce`, `useGeolocation` | `useRadarPlaces`, `useReorderTimeline`, `useSwapPlanB`, `useCentroidStays` |
-| `axios` instance, `queryClient`, `workspace.store` | `discovery.service`, `trip.service`, `weather-fallback.service`, `stay.service` |
-| `Coordinates`, `TimeSlotType`, `ApiResponse` | `PlaceMarker`, `ItineraryItem`, `PlanBCandidate`, `CentroidStay` |
-| `formatCurrencyVnd`, `formatDistanceKm` | `isDetourRoute()`, `getSlotWeatherSeverity()` |
+## Rendering, accessibility, and resiliency
 
-## Format
-- Mermaid diagrams for data flow, Map-Timeline sync, and Plan B swap sequence
-- Folder structure with inline comments
-- Max 150-200 lines
+- Leaflet is loaded through `next/dynamic(..., { ssr: false })`; no server component imports it.
+- Interactive leaves use `'use client'`; public route shells preserve server rendering and metadata.
+- Each panel has loading, empty, error, and retry states. A map error is isolated from the timeline through panel-level boundaries.
+- Drawers, dialogs, DnD controls, and map-adjacent controls provide labels, keyboard interaction, visible focus, and mobile-safe layout.
+- On narrow screens, the timeline remains primary and map/drawer navigation stays reachable without horizontal overflow.
 
-## Next.js & Spatial UI Additions
+## Contract change procedure
 
-**4-Layer Interactive Map Architecture (`features/discovery/components/MapCanvas.tsx`):**
-1. **Discovery & Proximity Radar Layer:** Renders `<Circle>` ($1\text{km}-5\text{km}$) around `radarAnchorCoords` and custom markers for Attractions, Restaurants, and Cafes.
-2. **Daily Route Polyline Layer:** Connects consecutive stops of `activeDayNumber` in order (`morning` → `lunch` → `afternoon` → `dinner`); renders a dashed orange/red line when `isDetourWarning === true`.
-3. **Plan B Indoor Preview Layer:** When `activePlanBItemId` is active, highlights the $3\text{km}$ search zone and the 2–3 candidate indoor markers for instant visual comparison before swapping.
-4. **Centroid & Stay Layer:** Renders the geometric Trip Centroid star marker $(\bar{x}, \bar{y})$ and nearby `stays` pins with distance lines to the centroid.
+1. Update [API_SPEC.md](../share/API_SPEC.md) before changing a feature service or typed response.
+2. Update Zod schemas, TypeScript types, service methods, hooks, and tests in the same feature slice.
+3. Add query invalidation if the mutation changes another feature's derived data.
+4. Update [FE-PROJECT-RULES.md](FE-PROJECT-RULES.md) or `CONTEXT.md` when the architecture rule or local decision changes.

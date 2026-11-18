@@ -1,159 +1,122 @@
 Write PROJECT-RULES.md for Backend (Feature-based) based on the project context above.
 
-## Tech Stack
-- Language: TypeScript 5.x (Node.js 20 LTS)
-- Framework: NestJS v11 (Modular Monolith)
-- ORM & Cache: TypeORM (with PostGIS Spatial SQL) + `ioredis` (Redis 7)
-- Database: PostgreSQL 16 + PostGIS 3.4 Extension
-- External Integrations: Open-Meteo API, `@nestjs/schedule` (Cron Jobs), Gemini / OpenAI API (Function Calling)
+# SkyRoute Backend Project Rules
 
-## Requirements
+## Stack and non-negotiable boundaries
 
-### 1. Feature Structure
-```
+- Node.js 20 LTS, TypeScript strict mode, NestJS v11, TypeORM, PostgreSQL 16/PostGIS 3.4, Redis 7 (`ioredis`), and `@nestjs/schedule`.
+- The backend is a feature-based modular monolith. Organize by business capability, never by horizontal layer.
+- Controllers own HTTP concerns; services own orchestration; repositories own persistence and all PostGIS SQL.
+- A feature may export its public service, but another feature must never import its repository, entity, DTO, or internal helper.
+
+```text
 src/
-├── features/
-│   ├── auth/           # users, refresh_tokens, JWT, guards
-│   ├── discovery/      # places, multi-layer filters, Proximity Radar (ST_DWithin), weather-aware food
-│   ├── stays/          # stays, Trip Centroid calculation (ST_Centroid), KNN nearest accommodation
-│   ├── trips/          # trips, itinerary_items, 4-slot Drag & Drop reorder, detour distance alerts
-│   ├── weather/        # weather_snapshots, hourly Open-Meteo cron sync, rain conflict flagger
-│   └── ai-copilot/     # plan_b_swaps, LLM Tool Calling, contextual ranking, 1-click Plan B swap
-├── shared/
-│   ├── decorators/     # @CurrentUser(), @Public(), @Roles()
-│   ├── filters/        # Global AllExceptionsFilter (maps domain error codes AUTH_001, WTHR_002...)
-│   ├── guards/         # JwtAuthGuard, RolesGuard, TripOwnerGuard
-│   ├── interceptors/   # TransformInterceptor ({ success, data, meta })
-│   ├── pipes/          # ValidationPipe, ParseCoordinatesPipe
-│   └── utils/          # Geo helpers (toWktPoint, haversine), slot time mappers
+├── config/                         # Typed, validated configuration namespaces
 ├── core/
-│   ├── database/       # TypeORM + PostGIS data source & migrations
-│   ├── cache/          # Redis client wrapper & TTL helpers
-│   └── integrations/   # OpenMeteoClient, LlmFunctionCallingClient
-└── config/             # Typed configuration namespaces
-```
-Each feature folder:
-```
-features/[feature-name]/
-├── [feature].module.ts
-├── [feature].controller.ts
-├── [feature].service.ts
-├── repositories/
-│   └── [entity].repository.ts
-├── dto/
-│   ├── create-[entity].dto.ts
-│   └── update-[entity].dto.ts
-├── entities/
-│   └── [entity].entity.ts
-├── types/
-│   └── [feature].types.ts
-├── tests/
-│   ├── [feature].controller.spec.ts
-│   └── [feature].service.spec.ts
-└── CONTEXT.md
+│   ├── cache/                      # Redis client and cache abstraction
+│   ├── database/                   # TypeORM datasource and migrations
+│   ├── integrations/               # OpenMeteoClient and LlmFunctionCallingClient
+│   └── logger/                     # Structured logging setup
+├── shared/
+│   ├── decorators/                 # @CurrentUser, @Public, @Roles
+│   ├── filters/                    # AllExceptionsFilter
+│   ├── guards/                     # JwtAuthGuard, RolesGuard, TripOwnerGuard
+│   ├── interceptors/               # TransformInterceptor, LoggingInterceptor
+│   ├── pipes/                      # Validation and coordinate parsing
+│   ├── types/                      # API envelope and pagination types
+│   └── utils/                      # Stateless geo and time-slot helpers
+└── features/
+    ├── auth/ discovery/ stays/ trips/ weather/ ai-copilot/
+    └── <feature>/{dto,entities,repositories,services,tests}/
 ```
 
-### 2. Naming Conventions
-- Feature folders: `kebab-case` (`ai-copilot`, `discovery`, `stays`, `trips`, `weather`, `auth`)
-- Files: `kebab-case` (`swap-plan-b.dto.ts`, `itinerary-item.entity.ts`, `place.repository.ts`)
-- Classes: `PascalCase` (`DiscoveryService`, `ReorderItineraryDto`, `PlanBSwapRepository`)
-- Functions/Methods: `camelCase` (`findPlacesInRadar`, `calculateTripCentroid`, `swapToIndoorPlanB`)
-- Variables: `camelCase` (`tripId`, `rainProbability`, `centroidCoords`)
-- Constants: `UPPER_SNAKE_CASE` (`RAIN_CONFLICT_THRESHOLD_PCT = 60`, `DETOUR_WARNING_KM = 8.0`, `PLAN_B_RADIUS_METERS = 3000`, `WEATHER_CACHE_TTL_SEC = 1800`)
-- Interfaces/Types: `PascalCase` with prefix `I` or suffix `Type` (`IUserPayload`, `TimeSlotType`, `ICoordinates`)
-- Entities: `PascalCase` singular (`User`, `Place`, `Stay`, `Trip`, `ItineraryItem`, `PlanBSwap`)
+Each feature has its own `<feature>.module.ts`, controller, public service, DTOs, entities, repositories, tests, and `CONTEXT.md` when its decisions need local explanation.
 
-### 3. Feature Rules
-- Feature must be self-contained with its own `@Module()`
-- No direct imports of internal files (repositories, entities, private helpers) between features
-- Cross-feature communication via:
-  - Module exports/imports through NestJS DI (export only `[Feature]Service`)
-  - NestJS `EventEmitter2` for async domain events (e.g., `trip.items.changed` triggers centroid update in `stays` and weather conflict re-check in `weather`)
-  - Shared utilities in `src/shared/`
-- Shared code location: `src/shared/` (stateless utilities/decorators) and `src/core/` (DB, Redis, External API clients)
-- Feature dependencies declared explicitly in `[feature].module.ts` imports
+## Feature ownership
 
-Feature boundaries for this project:
-- `auth`: handles `users`, `refresh_tokens`, multi-device JWT authentication
-- `discovery`: handles `places`, PostGIS Proximity Radar (`ST_DWithin`), and context-aware food discovery
-- `stays`: handles `stays` and calculates nearest accommodations to `trips.centroid_location` via PostGIS KNN `<->`
-- `trips`: handles `trips`, `itinerary_items`, 4-slot Drag & Drop reordering (`morning`, `lunch`, `afternoon`, `dinner`), and consecutive route distance / detour checks
-- `weather`: handles `weather_snapshots`, Redis 30m caching, Open-Meteo hourly cron polling, and flagging `weather_alert_flag = true` when `is_outdoor = true` & `rain_probability >= 60%`
-- `ai-copilot`: handles `plan_b_swaps`, LLM Function Calling (`get_places_by_radius`, `get_weather_forecast`), hybrid contextual ranking, and 1-click Plan B indoor swaps
+| Feature | Owns | May depend on |
+|---|---|---|
+| `auth` | users, refresh sessions, JWT | shared/core only |
+| `discovery` | places, radar, food context | weather's exported data contract |
+| `stays` | stays and centroid-nearest search | trips' exported centroid contract |
+| `trips` | trips, itinerary items, timeline distance | discovery/stays public services |
+| `weather` | forecasts, cache, cron, conflict flags | trips public events/contracts |
+| `ai-copilot` | tool orchestration and Plan B audit | discovery, weather, and trips public services |
 
-### 4. Code Patterns (MUST follow)
+Use exported services for synchronous collaboration. Use `EventEmitter2` for side effects, for example `trip.items.changed` triggers cache invalidation and weather conflict re-evaluation. Do not use `forwardRef()` to hide a circular dependency.
 
-**Error handling:**
-- Use NestJS built-in exceptions or custom domain exceptions extending `HttpException` with feature error codes (`DISC_003`, `WTHR_002`, `STAY_002`, `AI_001`)
-- Global exception filter in `shared/filters/all-exceptions.filter.ts` formats errors into `{ success: false, error: { code, message, details } }`
+## Naming and structure
 
-**Validation:**
-- Use `class-validator` decorators in DTOs (`@IsLatitude()`, `@IsLongitude()`, `@Min(1)`, `@Max(5)`)
-- Global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`
+- Folders and files: `kebab-case`: `ai-copilot`, `swap-plan-b.dto.ts`, `place.repository.ts`.
+- Classes, DTOs, entities, and types: `PascalCase`: `PlanBService`, `ReorderItineraryDto`, `Trip`.
+- Functions, variables, and response properties: `camelCase`: `findPlacesInRadar`, `rainProbability`.
+- Database names remain `snake_case`; map them to camelCase at the TypeORM/API boundary.
+- Constants are `UPPER_SNAKE_CASE`: `RAIN_CONFLICT_THRESHOLD_PCT`, `DETOUR_WARNING_KM`, `PLAN_B_RADIUS_METERS`.
+- Prefer explicit type names such as `Coordinates` and `TimeSlot`; do not add an `I` prefix unless it disambiguates a public interface.
 
-**Logging:**
-- Use NestJS built-in `Logger`
-- Log at service and external integration levels, not controller
-- Format: `[FeatureName] action - context (durationMs)` (especially for PostGIS spatial queries and LLM tool calls)
+## HTTP contract rules
 
-**Response format:**
-- Success: `{ success: true, data, message?, meta? }`
-- Error: `{ success: false, error: { code, message, details? } }`
-- Pagination & Radar Meta: `{ success: true, data, meta: { page, limit, total, totalPages, anchorPoint?, radiusKm? } }`
+- Implement `/api/v1` exactly as documented in [API_SPEC.md](../share/API_SPEC.md). A controller must not invent a second response shape.
+- Success responses pass through `TransformInterceptor`: `{ success: true, data, message?, meta? }`.
+- `AllExceptionsFilter` maps all errors to `{ success: false, error: { code, message, details? } }`. Use documented domain codes such as `DISC_003`, `WTHR_002`, and `AI_001`.
+- Validate only at external boundaries with DTOs and global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`.
+- Use `@Query()` for filters, `@Param('id', ParseIntPipe)` for identifiers, `@Body()` for JSON, and `@CurrentUser()` for identity.
+- Use `@Public()` sparingly. Apply `JwtAuthGuard`, `RolesGuard`, and `TripOwnerGuard` to every route requiring them; ownership is not optional because an ID was validated.
+- Document every controller endpoint with `@ApiTags`, `@ApiOperation`, and `@ApiResponse`; Swagger must mirror the API specification.
+- Apply `@Throttle()` to `/auth/*` and `/ai/*`. Do not silently treat a state-changing POST as retry-safe; idempotency requires an atomic persistence contract first.
 
-**Repository & Spatial Query pattern:**
-- Each entity has a dedicated repository inside `features/[feature]/repositories/`
-- All PostGIS spatial queries (`ST_DWithin`, `ST_DistanceSphere`, `ST_Centroid`, `ST_MakePoint`, `<->`) MUST reside inside repositories using parameterized `QueryBuilder`
-- Always pass coordinates to PostGIS in **`(longitude, latitude)`** order: `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)`
+## Persistence and PostGIS
 
-### 5. Anti-patterns (MUST NOT do)
-- Import directly from another feature's internal files (`repositories/`, `entities/`, `dto/`)
-- Circular dependencies between features (`trips` <-> `weather` <-> `stays`; use `EventEmitter2` events instead)
-- Business logic or spatial math in controllers (controllers only handle HTTP routing & DTOs)
-- Raw SQL or PostGIS `ST_*` queries inside services or controllers (must be encapsulated in repositories)
-- Swapping `lat` and `lng` in PostGIS (`ST_MakePoint(lat, lng)` is WRONG; must be `ST_MakePoint(lng, lat)`)
-- Allowing the AI LLM to return unverified place names or addresses from its pre-trained weights without calling internal PostGIS tools (`get_places_by_radius`)
-- Calling Open-Meteo API directly on every user request without checking Redis cache (`TTL = 30m`) first
-- Hardcoded configurations or thresholds (use `ConfigService` and shared domain constants)
-- Storing plain text passwords or plain refresh tokens (hash with bcrypt / SHA-256)
+- TypeORM entities use `@Entity`; point columns use `@Column({ type: 'geometry', spatialFeatureType: 'Point', srid: 4326 })`.
+- Always convert `{ lat, lng }` through one helper to `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)`. `ST_MakePoint(lat, lng)` is a correctness bug.
+- Put `ST_DWithin`, `ST_DistanceSphere`, `ST_Centroid`, and KNN `<->` only in repositories with bound parameters. Controllers and services do not contain raw spatial SQL.
+- Radar with `location::geography` requires the functional GIST index on `(location::geography)` documented in `DATABASE.md`; do not claim that a geometry-only index covers this cast.
+- Recalculate `trips.centroid_location` from place points only. Do not include stay timeline items in the trip centroid.
+- All migrations are reversible, named `[timestamp]_[description].ts`, and never rely on `synchronize: true` outside local test environments.
 
-### 6. Git Workflow
-- Branch naming: `[type]/[feature]-[short-description]`
-  - `feature/discovery-proximity-radar`
-  - `feature/ai-copilot-plan-b-swap`
-  - `fix/trips-centroid-recalculation`
-- Commit message: `[type]([feature]): [description]`
-  - `feat(discovery): add PostGIS ST_DWithin proximity radar query`
-  - `feat(ai-copilot): implement 1-click indoor Plan B swap transaction`
-  - `fix(weather): fallback to weather_snapshots table when Open-Meteo times out`
-- PR requirements:
-  - Linked to issue/task
-  - Passes all unit and integration tests
-  - Zero ESLint / TypeScript errors
-  - Reversible TypeORM migration included if schema changed
+## Domain invariants
 
-### 7. Testing
-- Test file location: `features/[feature]/tests/` or co-located `[name].spec.ts`
-- Test file naming: `[name].spec.ts` (unit), `[name].e2e-spec.ts` (integration/E2E)
-- Test structure: `describe` → `it` (Arrange - Act - Assert)
-- Coverage requirements:
-  - Services: `80%+` (especially `ContextualRanking`, `WeatherConflictDetector`, `CentroidCalculator`, `DetourDetector`)
-  - Controllers: `70%+`
-  - Repositories: `60%+`
-- Mock external dependencies (Redis, Open-Meteo HTTP API, Gemini/OpenAI LLM API) in unit tests
+| Rule | Required implementation |
+|---|---|
+| Timeline activity | Exactly one of `placeId` or `stayId`; enforce in DTO and database constraint |
+| Weather conflict | `isOutdoor === true && rainProbability >= 60` |
+| Detour | Consecutive same-day distance is over 8 km |
+| Plan B | Active, indoor, rainy-suitable place within 3 km of the preceding stop |
+| AI grounding | LLM may explain/rank results but can return only IDs queried through internal PostGIS tools |
+| Weather resilience | Redis (30m) → Open-Meteo → `weather_snapshots` fallback |
 
-## Format
-- Concrete examples for each rule (using SkyRoute domain: PostGIS radar, Plan B swap, Centroid stays)
-- DO vs DON'T comparisons
-- Max 100-150 lines
+Use one `DataSource.transaction()` or `QueryRunner` for timeline reorder and Plan B swap. A Plan B transaction replaces the place, writes `plan_b_swaps`, recalculates route distances and the centroid, then emits the post-commit domain event.
 
-## NestJS & PostGIS-Specific Additions
-- Use `@Module`, `@Controller`, `@Injectable` decorators properly
-- Guards for authentication (`JwtAuthGuard`), authorization (`RolesGuard`), and ownership (`TripOwnerGuard`)
-- Global `TransformInterceptor` for standard `{ success, data, meta }` envelope
-- Custom decorators: `@CurrentUser()`, `@Roles()`, `@Public()`
-- TypeORM entities use `@Entity`, `@Column({ type: 'geometry', spatialFeatureType: 'Point', srid: 4326 })`, `@Index({ spatial: true })`
-- Scheduled background tasks use `@Cron(CronExpression.EVERY_30_MINUTES)` inside `WeatherPollerService`
-- Database transactions via `DataSource.transaction()` or `QueryRunner` for multi-step operations:
-  - Drag & Drop timeline batch reorder (`PATCH /trips/:id/items/reorder`) + route distance recalculation + `centroid_location` update
-  - One-click Plan B swap (`POST /trips/:id/items/:itemId/swap-plan-b`) + `plan_b_swaps` audit log insertion
+## Configuration, security, and logging
+
+- Read configuration only through `ConfigService`; validate required environment variables at bootstrap.
+- Keep secrets in `.env`, never in source or logs: database password, Redis password, JWT secrets, and AI-provider key.
+- Hash passwords with bcrypt and refresh tokens with SHA-256. Refresh cookies are `httpOnly`, `Secure`, and `SameSite=Lax` in production.
+- Validate Open-Meteo and LLM responses as untrusted external input before using them.
+- Log in services and integration clients, not controllers. Include feature, action, safe identifiers, duration, and outcome; never log token values, passwords, or complete prompts containing sensitive data.
+
+```ts
+// Good: repository owns the parameterized spatial query.
+return this.dataSource.query(sql, [lng, lat, radiusMeters]);
+
+// Bad: controller contains spatial SQL or receives unvalidated coordinates.
+return this.dataSource.query(`SELECT * FROM places WHERE ... ${req.query.lat}`);
+```
+
+## Testing and delivery
+
+- Place unit tests under `features/<feature>/tests/` or co-locate `*.spec.ts`; use `*.e2e-spec.ts` for end-to-end tests.
+- Follow Arrange–Act–Assert. Mock Redis, Open-Meteo, and LLM clients in unit tests; use a real PostGIS test database for repository integration tests.
+- Minimum coverage targets: services 80%, controllers 70%, repositories 60%. Prioritize tests for coordinate ordering, ownership, weather threshold, detour threshold, transactions, and AI grounding.
+- Before a PR: run lint, type-check, unit/integration tests, and relevant migration up/down tests. Schema changes require a reversible migration and matching updates to `DATABASE.md` and `API_SPEC.md`.
+- Branches use `feature/<feature>-<summary>` or `fix/<feature>-<summary>`; commits use Conventional Commit style, e.g. `feat(discovery): add proximity radar query`.
+
+## Do / do not
+
+| Do | Do not |
+|---|---|
+| Inject `DiscoveryService` through its exported module API | Import `discovery/repositories/place.repository` from `ai-copilot` |
+| Cache and fall back before failing weather requests | Call Open-Meteo for every request |
+| Use a transaction for multi-table timeline mutations | Update itinerary, audit, and centroid independently |
+| Return real `placeId` records after tool calls | Let the model invent a venue or address |
+| Use configuration for thresholds | Hardcode `60`, `8`, or `3000` inside controllers |

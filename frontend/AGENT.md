@@ -1,59 +1,59 @@
 # SkyRoute Frontend — Agent Context (`frontend/AGENT.md`)
 
-> **Scope:** Applies to all work inside `frontend/`. Always read root [AGENT.md](../AGENT.md) first for full project context.
+> Applies to work inside `frontend/`. Read [../AGENT.md](../AGENT.md) first, then this file and the linked API/frontend specifications.
 
----
+## Identity and source of truth
 
-## 1. Frontend Identity & Stack
+- Stack: Next.js 15 App Router, React 19, TypeScript strict mode, Tailwind CSS, shadcn/ui, TanStack Query v5, Zustand, React Leaflet, `@dnd-kit`, Axios, React Hook Form, and Zod.
+- This is a feature-based frontend. `src/app/` is a thin route/layout shell; domain code belongs in `src/features/`.
+- API contract: [../share/API_SPEC.md](../share/API_SPEC.md). Data model: [../share/DATABASE.md](../share/DATABASE.md). Frontend guidance: [FE-PROJECT-RULES.md](FE-PROJECT-RULES.md) and [FE-ARCHITECTURE.md](FE-ARCHITECTURE.md).
 
-- **Framework:** Next.js 15 (App Router, React 19, TypeScript 5.x strict mode)
-- **Styling & UI:** Tailwind CSS + `shadcn/ui` (Radix Primitives) + Lucide Icons
-- **State Management:**
-  - **TanStack Query v5:** Server state, cache invalidation, and optimistic Drag & Drop updates (`onMutate`)
-  - **Zustand (`shared/stores/workspace.store.ts`):** High-frequency Map $\leftrightarrow$ Timeline UI synchronization (`hoveredPlaceId`, `activeDayNumber`, `radarAnchorCoords`, `radarRadiusKm`, `activePlanBItemId`)
-- **Spatial Map:** `react-leaflet` (Leaflet.js + OpenStreetMap) — **MUST be client-only via `next/dynamic(..., { ssr: false })`**
-- **Drag & Drop:** `@dnd-kit/core` + `@dnd-kit/sortable`
-- **HTTP & Forms:** Axios (`withCredentials: true`, JWT auto-refresh interceptor) + React Hook Form + Zod
+## Feature map
 
-### Reference Specs
-- API Contract: [../share/API_SPEC.md](../share/API_SPEC.md)
-- Architecture & Rules: [FE-ARCHITECTURE.md](FE-ARCHITECTURE.md), [FE-PROJECT-RULES.md](FE-PROJECT-RULES.md)
+| Feature | Owns |
+|---|---|
+| `auth` | login, registration, session UI, access-token lifecycle |
+| `discovery` | client-only map, place layers, 1–5 km radar, discovery filters |
+| `itinerary-planner` | trip UI, day selector, four-slot DnD timeline, route warnings |
+| `weather-fallback` | slot forecast, rain conflict state, Plan B candidates and swap drawer |
+| `stay-finder` | trip centroid pin and nearest-stay comparison |
+| `ai-copilot` | grounded itinerary prompt and preview/apply flow |
 
----
+Cross-feature imports use only `@/features/<feature>` public barrels. Coordinate cross-panel UI through `workspace.store`, cache freshness through TanStack Query invalidation, and shareable view state through URL search parameters.
 
-## 2. Feature Modules & App Router Separation
+## Non-negotiable rules
 
-- **`src/app/` (Thin Routing Shell ONLY):** Holds route groups `(marketing)`, `(auth)`, `(workspace)/trips/[tripId]`, `loading.tsx`, `error.tsx`, and `generateMetadata`. Each `page.tsx` MUST remain `< 50` lines and contain zero business logic.
-- **`src/features/` (Self-contained Domain Slices):**
-  - `auth`: Login, register, session state.
-  - `discovery`: Interactive Map wrapper (`next/dynamic`), 4-layer map canvas, Proximity Radar ($1\text{km}-5\text{km}$) controls, category/indoor/weather-aware food filters.
-  - `itinerary-planner`: Day tabs, 4-slot Drag & Drop Timeline (`morning`, `lunch`, `afternoon`, `dinner`), route polylines & detour warning badges ($> 8\text{km}$).
-  - `weather-fallback`: Slot weather pills, red conflict alert (`isOutdoor && rainProbability >= 60%`), 1-click Plan B indoor swap drawer.
-  - `stay-finder`: Geometric Trip Centroid pin $(\bar{x}, \bar{y})$ and nearest accommodation comparison drawer.
-  - `ai-copilot`: Context-aware travel prompt builder & grounded AI itinerary preview.
+1. Never import `leaflet` or `react-leaflet` in a Server Component. Export the map through `next/dynamic(..., { ssr: false })` and keep `MapCanvas` client-only.
+2. Keep server data exclusively in TanStack Query. Zustand holds only transient shared UI state: hover/selection, active day, radar anchor/radius, and active Plan B item.
+3. API calls live in feature services; components call hooks, never Axios directly.
+4. Drag/reorder mutations use optimistic `onMutate`, rollback in `onError`, then invalidate `['trip', tripId]` and `['centroid-stays', tripId]` after settlement.
+5. `DndContext` uses deterministic `id="skyroute-timeline-dnd"`. Leaflet markers are memoized and granular store selectors must not remount `MapContainer` on hover.
+6. API coordinates are `{ lat, lng }`; never exchange their positions. A weather conflict is only `isOutdoor && rainProbability >= 60`.
+7. Page files are under 50 lines where practical: resolve route data/metadata and render exported feature components only.
 
----
+## State placement
 
-## 3. Critical Frontend Guardrails
-
-1. **Leaflet SSR Crash Prevention:** NEVER import `leaflet` or `react-leaflet` in a Server Component or without `next/dynamic(() => import('./MapCanvas'), { ssr: false })`.
-2. **4-Layer Map Performance:** Wrap custom markers (`Attraction`, `Restaurant`, `Stay`, `CentroidPin`) in `React.memo` and use a child `<MapViewportController />` with `useMap()` subscribing to granular Zustand selectors so hovering timeline cards never re-mounts `MapContainer`.
-3. **`@dnd-kit` Hydration & Optimistic UI:** Always pass a deterministic `id="skyroute-timeline-dnd"` to `<DndContext>`. Use TanStack Query `onMutate` for instant card snapping and `onError` rollback; on success, invalidate `['trip', tripId]` and `['centroid-stays', tripId]`.
-4. **Barrel Exports Only:** Import across features strictly via `@/features/<feature>` (`index.ts`), never from internal `components/` or `hooks/` folders.
-5. **No Server State in Zustand:** Keep API responses (`places`, `trips`, `stays`, `planBCandidates`) exclusively in TanStack Query; never duplicate them in Zustand.
-
----
-
-## 4. Frontend Skill Activation Guide
-
-Read the corresponding `SKILL.md` in `../agent-skills/skills/` before executing:
-
-| Frontend Task | Skill to Load | Focus for SkyRoute |
+| State | Owner | Examples |
 |---|---|---|
-| **Build UI / Map / Timeline** | `frontend-ui-engineering` | Split-screen layout, `shadcn/ui` drawers, WCAG accessibility, responsive states |
-| **Next.js 15 / Leaflet / DnD APIs** | `source-driven-development` | Verify Next.js 15 async `params`, `next/dynamic`, `@dnd-kit` & TanStack Query v5 patterns |
-| **Implement Feature Slice** | `incremental-implementation`, `test-driven-development` | Test DnD slot transitions, red weather alert badges, and 1-click Plan B swap mutations (Vitest + RTL) |
-| **Live Browser & Map Debugging** | `browser-testing-with-devtools` | Inspect live DOM, Leaflet canvas rendering, network `/api/v1` payloads, console errors |
-| **Performance & Rendering** | `performance-optimization` | Prevent `MapContainer` re-renders, lazy-load heavy map overlays, Core Web Vitals |
-| **Bug Triage** | `debugging-and-error-recovery` | Fix SSR `window is not defined`, hydration mismatches, or optimistic rollback bugs |
-| **Pre-Merge Check** | `code-review-and-quality`, `code-simplification` | Enforce `< 200` lines/component, barrel imports, and clean custom hooks |
+| Server state | TanStack Query | places, trip detail, forecast, Plan B candidates, centroid stays |
+| Map/timeline UI sync | `shared/stores/workspace.store.ts` | `hoveredPlaceId`, `activeDayNumber`, `radarAnchorCoords` |
+| Session | `features/auth` store | user, access token, authentication state |
+| URL state | App Router search params | `day`, `mode`, `radius`, `category` |
+| Form/local UI | component | form values, drawer/tooltip open state |
+
+## Before implementation
+
+| Task | Read first |
+|---|---|
+| UI, map, timeline, responsive/accessibility work | `agent-skills/skills/frontend-ui-engineering/SKILL.md` |
+| Next.js, Leaflet, DnD, or Query API uncertainty | `agent-skills/skills/source-driven-development/SKILL.md` |
+| New feature implementation | `incremental-implementation` and `test-driven-development` skills |
+| Browser/map/runtime diagnosis | `browser-testing-with-devtools` and `debugging-and-error-recovery` skills |
+| Performance/review | `performance-optimization`, `code-review-and-quality`, `code-simplification` skills |
+
+## Completion bar
+
+- Validate API types and error states, including `401`, ownership errors, weather conflict, and empty candidates.
+- Test the changed hook/component with Vitest and React Testing Library; test UI interactions in browser when the map or DnD behavior changes.
+- Preserve keyboard accessibility, visible focus, loading/skeleton, empty, and error states.
+- Run lint, type-check, and build before handoff; update the matching specification if the contract changes.

@@ -1,61 +1,57 @@
 # SkyRoute Backend — Agent Context (`backend/AGENT.md`)
 
-> **Scope:** Applies to all work inside `backend/`. Always read root [AGENT.md](../AGENT.md) first for full project context.
+> Applies to work in `backend/`. Read [../AGENT.md](../AGENT.md) first, then use this file with [BE-PROJECT-RULES.md](BE-PROJECT-RULES.md), [BE-ARCHITECTURE.md](BE-ARCHITECTURE.md), and the shared contracts.
 
----
+## Stack and source of truth
 
-## 1. Backend Identity & Stack
+- NestJS v11, TypeScript strict mode, Node.js 20 LTS, TypeORM, PostgreSQL 16/PostGIS 3.4, Redis 7, Open-Meteo, scheduled jobs, and Gemini/OpenAI function calling.
+- [../share/DATABASE.md](../share/DATABASE.md) defines persistence, PostGIS indexes, and cache keys.
+- [../share/API_SPEC.md](../share/API_SPEC.md) defines public HTTP behavior, error codes, envelopes, and retry semantics.
+- This folder's rules and architecture documents define module boundaries and implementation behavior; do not substitute a controller-local convention.
 
-- **Framework:** NestJS v11 (TypeScript 5.x, Node.js 20 LTS) — **Feature-based Modular Monolith**
-- **Database & Spatial Engine:** PostgreSQL 16 + PostGIS 3.4 (`GEOMETRY(Point, 4326)`, `GIST` & `GIN` indexes)
-- **ORM:** TypeORM (using parameterized `QueryBuilder` for PostGIS spatial SQL)
-- **Cache & Scheduling:** Redis 7 (`ioredis`, weather TTL = `1800s` / 30m) + `@nestjs/schedule` (`@Cron`)
-- **External APIs:** Open-Meteo API (hourly forecast), Gemini / OpenAI API (Function Calling / Tool Use)
+## Feature ownership
 
-### Reference Specs
-- Schema & Spatial SQL: [../share/DATABASE.md](../share/DATABASE.md)
-- API Contracts & Error Codes: [../share/API_SPEC.md](../share/API_SPEC.md)
-- Architecture & Rules: [BE-ARCHITECTURE.md](BE-ARCHITECTURE.md), [BE-PROJECT-RULES.md](BE-PROJECT-RULES.md)
-
----
-
-## 2. Feature Modules & Boundaries
-
-All domain logic lives in `src/features/<feature-name>/`:
-- `auth`: `users`, `refresh_tokens` (SHA-256 hashed), JWT access/refresh, `JwtAuthGuard`, `RolesGuard`, `TripOwnerGuard`.
-- `discovery`: `places`, multi-layer filters, Proximity Radar (`ST_DWithin` $1\text{km}-5\text{km}$), weather-aware food recommendations.
-- `stays`: `stays`, geometric Trip Centroid lookup via PostGIS KNN `<->`.
-- `trips`: `trips`, `itinerary_items` (4 slots: `morning`, `lunch`, `afternoon`, `dinner`), Drag & Drop batch reorder, route detour detection ($> 8\text{km}$).
-- `weather`: `weather_snapshots`, Redis 30m cache, `@Cron(EVERY_30_MINUTES)` Open-Meteo poller, conflict flagger (`is_outdoor && rain >= 60%`).
-- `ai-copilot`: `plan_b_swaps`, LLM Tool Calling (`get_places_by_radius`, `get_weather_forecast`), hybrid contextual ranking, 1-click Plan B indoor swap ($< 3\text{km}$).
-
-### Module Communication Rules
-- **Allowed:** Import exported `[Feature]Module` and inject its `[Feature]Service`; emit async domain events via `@nestjs/event-emitter` (`trip.items.changed`).
-- **Forbidden:** Direct imports of another feature's `repositories/`, `entities/`, or `dto/`; circular module dependencies (`forwardRef` avoided via events).
-
----
-
-## 3. Critical Backend Guardrails
-
-1. **PostGIS `(lng, lat)` Order:** NEVER write `ST_MakePoint(lat, lng)`. ALWAYS pass **longitude first, latitude second**: `ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)`.
-2. **Encapsulated Spatial SQL:** All `ST_DWithin`, `ST_DistanceSphere`, `ST_Centroid`, and `<->` queries MUST stay inside `repositories/*.repository.ts`—never in Controllers or Services.
-3. **Atomic Transactions:** Wrap multi-step writes (`PATCH /trips/:id/items/reorder` and `POST /trips/:id/items/:itemId/swap-plan-b`) in `DataSource.transaction()` / `QueryRunner` so slot updates, detour distances, `plan_b_swaps` audit logs, and `trips.centroid_location` stay consistent.
-4. **AI Grounding:** The LLM may ONLY rank and recommend `place_id` / `stay_id` records returned by internal PostGIS tool calls.
-5. **Standard Envelope & Errors:** Wrap responses via `TransformInterceptor` (`{ success, data, meta }`) and throw domain exceptions with feature codes (`DISC_002`, `WTHR_002`, `STAY_002`, `AI_001`) handled by `AllExceptionsFilter`.
-
----
-
-## 4. Backend Skill Activation Guide
-
-Read the corresponding `SKILL.md` in `../agent-skills/skills/` before executing:
-
-| Backend Task | Skill to Load | Focus for SkyRoute |
+| Feature | Owns | Public collaboration |
 |---|---|---|
-| **Design Endpoints / DTOs** | `api-and-interface-design` | DTO `class-validator` rules, Swagger `@ApiTags`, error codes |
-| **PostGIS / TypeORM / NestJS APIs** | `source-driven-development` | Verify exact TypeORM `QueryBuilder` & PostGIS syntax |
-| **Implement Feature Slice** | `incremental-implementation`, `test-driven-development` | Unit test Services ($\ge 80\%$: ranking, centroid, detour, weather conflict) with mocked DB/Redis/LLM |
-| **Spatial / Transaction / AI Logic** | `doubt-driven-development` | Verify `(lng, lat)` order, `QueryRunner` rollbacks, AI tool schemas |
-| **Security & Auth** | `security-and-hardening` | JWT rotation, `TripOwnerGuard`, SQL injection prevention in spatial queries, rate limiting |
-| **Performance & Caching** | `performance-optimization`, `observability-and-instrumentation` | `GIST` index usage (`< 10ms` radar target), Redis TTL hit rate, structured query timing logs |
-| **Bug Triage** | `debugging-and-error-recovery` | Open-Meteo timeouts (`weather_snapshots` fallback), migration rollbacks |
-| **Pre-Merge Check** | `code-review-and-quality` | Check feature isolation, zero business logic in controllers |
+| `auth` | users, refresh sessions, JWT lifecycle | `AuthService` |
+| `discovery` | places, radar, weather-aware food | `DiscoveryService` |
+| `trips` | trips, itinerary items, reordering | `TripsService`, `TimelineService`, `trip.items.changed` |
+| `weather` | cache, snapshots, poller, conflicts | `WeatherService`; consumes trip events |
+| `stays` | stays and centroid-nearest lookup | `StaysService`; consumes trip events |
+| `ai-copilot` | tool orchestration, ranking, Plan B audits | `AiCopilotService`; emits trip events after swaps |
+
+Import feature modules and inject exported services only. Never import another feature's repository, entity, DTO, or private helper. Replace circular dependencies with events rather than `forwardRef()`.
+
+## Guardrails
+
+1. Convert API coordinates `{ lat, lng }` only through `ST_SetSRID(ST_MakePoint(lng, lat), 4326)`. Reversing this order is a correctness bug.
+2. All spatial SQL (`ST_DWithin`, `ST_DistanceSphere`, `ST_Centroid`, KNN `<->`) belongs in parameterized repository methods. Geography radar queries rely on the functional GIST geography index.
+3. Controllers bind DTOs and HTTP responses; services orchestrate; repositories persist. No spatial/business logic in controllers.
+4. Protect trip mutations with JWT and ownership guards. Validate DTOs globally with whitelist, forbid-unknown, and transform enabled.
+5. Return only the standard success/error envelopes and documented `AUTH_*`, `DISC_*`, `TRIP_*`, `WTHR_*`, `STAY_*`, `AI_*`, or `SYS_*` codes.
+6. Timeline reorder and Plan B swap run as one database transaction. Plan B writes its audit row, recalculates route/centroid, then emits an event only after commit.
+7. Weather source order is Redis (30-minute TTL), Open-Meteo, then `weather_snapshots`. A conflict requires outdoor activity and rain probability at least 60.
+8. The LLM can rank/explain only place IDs returned by internal tools. Validate provider output as untrusted input; never return invented places or addresses.
+9. Passwords use bcrypt, refresh tokens use SHA-256 hashes, and secrets/tokens must never enter logs.
+
+## Implementation checklist
+
+- Put code in `src/features/<feature>/` with its module, controller, services, repositories, DTOs, entities, tests, and public exports.
+- Use `ConfigService`; validate all configuration at bootstrap. Do not hardcode thresholds, provider keys, or connection values.
+- Use `@ApiTags`, `@ApiOperation`, and `@ApiResponse` so Swagger at `/api/docs` matches `API_SPEC.md`.
+- Apply `@Throttle()` to authentication and AI routes. POST actions are not retry-safe until an atomic idempotency design is implemented.
+- Write unit tests for domain behavior and integration tests for PostGIS repositories/transactions. Mock Redis and external providers in unit tests.
+- For a schema or endpoint change, update migration, `DATABASE.md`, and `API_SPEC.md` together.
+
+## Skill routing
+
+| Backend task | Read first |
+|---|---|
+| Endpoint/DTO/module contract | `api-and-interface-design` |
+| NestJS, TypeORM, or PostGIS API uncertainty | `source-driven-development` |
+| Feature implementation | `incremental-implementation`, `test-driven-development` |
+| Spatial, transaction, AI, or auth decision | `doubt-driven-development` |
+| Security/auth hardening | `security-and-hardening` |
+| Performance/cache/query timing | `performance-optimization`, `observability-and-instrumentation` |
+| Runtime failure or migration diagnosis | `debugging-and-error-recovery` |
+| Pre-merge review | `code-review-and-quality` |
