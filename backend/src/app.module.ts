@@ -6,6 +6,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import * as path from 'path';
 import { DatabaseModule } from './core/database/database.module';
 import { AuthModule } from './features/auth/auth.module';
+import { DiscoveryModule } from './features/discovery/discovery.module';
 import { Public } from './shared/decorators/public.decorator';
 
 @Controller('health')
@@ -28,6 +29,7 @@ export class HealthController {
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
     AuthModule,
+    DiscoveryModule,
   ],
   controllers: [HealthController],
 })
