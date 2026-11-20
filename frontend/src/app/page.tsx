@@ -16,10 +16,16 @@ export default function HomePage() {
       </p>
       <div className="mt-8 flex flex-wrap justify-center gap-4">
         <Link
-          href={ROUTES.TRIPS}
+          href={ROUTES.EXPLORE_CITY('da-lat')}
           className="rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-700"
         >
-          Bắt đầu lập lịch trình
+          Khám phá Radar Đà Lạt
+        </Link>
+        <Link
+          href={ROUTES.TRIPS}
+          className="rounded-lg border border-sky-200 bg-sky-50 px-5 py-2.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+        >
+          Lập lịch trình
         </Link>
         <Link
           href={ROUTES.LOGIN}
