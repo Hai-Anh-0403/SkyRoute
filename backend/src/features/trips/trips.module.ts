@@ -1,0 +1,32 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { DiscoveryModule } from '../discovery/discovery.module';
+import { Stay } from '../stays/entities/stay.entity';
+import { ItineraryItem } from './entities/itinerary-item.entity';
+import { Trip } from './entities/trip.entity';
+import { TripOwnerGuard } from './guards/trip-owner.guard';
+import { ItineraryItemRepository } from './repositories/itinerary-item.repository';
+import { TripRepository } from './repositories/trip.repository';
+import { TripsService } from './services/trips.service';
+import { TripsController } from './trips.controller';
+
+@Module({
+  imports: [
+    TypeOrmModule.forFeature([Trip, ItineraryItem, Stay]),
+    DiscoveryModule,
+  ],
+  controllers: [TripsController],
+  providers: [
+    TripRepository,
+    ItineraryItemRepository,
+    TripsService,
+    TripOwnerGuard,
+  ],
+  exports: [
+    TripsService,
+    TripRepository,
+    ItineraryItemRepository,
+    TripOwnerGuard,
+  ],
+})
+export class TripsModule {}

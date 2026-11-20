@@ -7,6 +7,7 @@ import * as path from 'path';
 import { DatabaseModule } from './core/database/database.module';
 import { AuthModule } from './features/auth/auth.module';
 import { DiscoveryModule } from './features/discovery/discovery.module';
+import { TripsModule } from './features/trips/trips.module';
 import { Public } from './shared/decorators/public.decorator';
 
 @Controller('health')
@@ -30,6 +31,7 @@ export class HealthController {
     EventEmitterModule.forRoot(),
     AuthModule,
     DiscoveryModule,
+    TripsModule,
   ],
   controllers: [HealthController],
 })
