@@ -14,12 +14,18 @@ export default function HomePage() {
         Khám phá điểm đến bằng Radar PostGIS, kéo-thả lịch trình 4 khung giờ,
         tự động hoán đổi Kế hoạch B khi trời mưa và tìm phòng tại Tâm chuyến đi.
       </p>
-      <div className="mt-8 flex gap-4">
+      <div className="mt-8 flex flex-wrap justify-center gap-4">
         <Link
           href={ROUTES.TRIPS}
           className="rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-sky-700"
         >
           Bắt đầu lập lịch trình
+        </Link>
+        <Link
+          href={ROUTES.LOGIN}
+          className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Đăng nhập
         </Link>
       </div>
     </main>
