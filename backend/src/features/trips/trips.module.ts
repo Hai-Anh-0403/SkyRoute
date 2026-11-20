@@ -7,6 +7,7 @@ import { Trip } from './entities/trip.entity';
 import { TripOwnerGuard } from './guards/trip-owner.guard';
 import { ItineraryItemRepository } from './repositories/itinerary-item.repository';
 import { TripRepository } from './repositories/trip.repository';
+import { TimelineService } from './services/timeline.service';
 import { TripsService } from './services/trips.service';
 import { TripsController } from './trips.controller';
 
@@ -20,10 +21,12 @@ import { TripsController } from './trips.controller';
     TripRepository,
     ItineraryItemRepository,
     TripsService,
+    TimelineService,
     TripOwnerGuard,
   ],
   exports: [
     TripsService,
+    TimelineService,
     TripRepository,
     ItineraryItemRepository,
     TripOwnerGuard,

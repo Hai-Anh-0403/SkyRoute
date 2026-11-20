@@ -96,6 +96,9 @@ describe('TripsService & TripOwnerGuard', () => {
     itemRepo = {
       findByTripOrdered: jest.fn(),
       findByIdInTrip: jest.fn(),
+      findExistingIdsAndDays: jest.fn(),
+      batchUpdatePositions: jest.fn(),
+      recalculateDayDistances: jest.fn(),
       getNextOrderIndex: jest.fn(),
       existsActiveStay: jest.fn(),
       create: jest.fn(),

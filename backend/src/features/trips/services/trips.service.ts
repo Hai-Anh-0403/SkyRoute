@@ -173,7 +173,7 @@ export class TripsService {
       dto.orderIndex ??
       (await this.itemRepo.getNextOrderIndex(tripId, dto.dayNumber, timeSlot));
 
-    const item = await this.itemRepo.create({
+    const created = await this.itemRepo.create({
       tripId,
       placeId: hasPlace ? String(dto.placeId) : null,
       stayId: hasStay ? String(dto.stayId) : null,
@@ -183,7 +183,10 @@ export class TripsService {
       note: dto.note?.trim() ?? null,
     });
 
+    await this.itemRepo.recalculateDayDistances(tripId, [dto.dayNumber], 8.0);
     const centroidLocation = await this.tripRepo.recalculateCentroid(tripId);
+    const item =
+      (await this.itemRepo.findByIdInTrip(tripId, String(created.id))) ?? created;
     this.emitItemsChanged(tripId, [dto.dayNumber]);
 
     return { item, centroidLocation };
@@ -252,10 +255,17 @@ export class TripsService {
       );
     }
 
+    await this.itemRepo.recalculateDayDistances(
+      tripId,
+      [existing.dayNumber],
+      8.0,
+    );
     const centroidLocation = await this.tripRepo.recalculateCentroid(tripId);
+    const refreshed =
+      (await this.itemRepo.findByIdInTrip(tripId, itemId)) ?? updated;
     this.emitItemsChanged(tripId, [existing.dayNumber]);
 
-    return { item: updated, centroidLocation };
+    return { item: refreshed, centroidLocation };
   }
 
   async deleteItem(
@@ -274,6 +284,11 @@ export class TripsService {
     }
 
     await this.itemRepo.deleteById(tripId, itemId);
+    await this.itemRepo.recalculateDayDistances(
+      tripId,
+      [existing.dayNumber],
+      8.0,
+    );
     await this.tripRepo.recalculateCentroid(tripId);
     this.emitItemsChanged(tripId, [existing.dayNumber]);
   }

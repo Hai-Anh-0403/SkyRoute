@@ -22,6 +22,7 @@ import {
   AuthUserPayload,
   CurrentUser,
 } from '../../shared/decorators/current-user.decorator';
+import { ReorderItineraryDto } from './dto/reorder-itinerary.dto';
 import {
   AddItineraryItemDto,
   CreateTripDto,
@@ -30,13 +31,17 @@ import {
   UpdateTripDto,
 } from './dto/trips.dto';
 import { TripOwnerGuard } from './guards/trip-owner.guard';
+import { TimelineService } from './services/timeline.service';
 import { TripsService } from './services/trips.service';
 
 @ApiTags('Trips')
 @ApiBearerAuth()
 @Controller('trips')
 export class TripsController {
-  constructor(private readonly tripsService: TripsService) {}
+  constructor(
+    private readonly tripsService: TripsService,
+    private readonly timelineService: TimelineService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List trips owned by the authenticated user' })
@@ -103,6 +108,20 @@ export class TripsController {
     @Body() dto: AddItineraryItemDto,
   ) {
     return this.tripsService.addItem(user.userId, String(id), dto);
+  }
+
+  @Patch(':id/items/reorder')
+  @UseGuards(TripOwnerGuard)
+  @ApiOperation({
+    summary:
+      'Atomically reorder timeline items and recalculate route detour & centroid',
+  })
+  reorderItems(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReorderItineraryDto,
+  ) {
+    return this.timelineService.reorderItems(user.userId, String(id), dto);
   }
 
   @Patch(':id/items/:itemId')

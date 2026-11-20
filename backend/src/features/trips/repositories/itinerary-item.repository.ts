@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import { Stay } from '../../stays/entities/stay.entity';
 import { ItineraryItem } from '../entities/itinerary-item.entity';
 import { ItineraryItemResponse, TimeSlotType } from '../types/trip.types';
@@ -50,11 +50,14 @@ export class ItineraryItemRepository {
     private readonly stayRepo: Repository<Stay>,
   ) {}
 
-  async findByTripOrdered(tripId: string): Promise<ItineraryItemResponse[]> {
+  async findByTripOrdered(
+    tripId: string,
+    manager?: EntityManager,
+  ): Promise<ItineraryItemResponse[]> {
     const slotOrder =
       "CASE ii.time_slot WHEN 'morning' THEN 0 WHEN 'lunch' THEN 1 WHEN 'afternoon' THEN 2 ELSE 3 END";
 
-    const rows = await this.baseSelectQuery()
+    const rows = await this.baseSelectQuery(manager)
       .where('ii.trip_id = :tripId', { tripId })
       .orderBy('ii.day_number', 'ASC')
       .addOrderBy(slotOrder, 'ASC')
@@ -68,11 +71,118 @@ export class ItineraryItemRepository {
   async findByIdInTrip(
     tripId: string,
     itemId: string,
+    manager?: EntityManager,
   ): Promise<ItineraryItemResponse | null> {
-    const row = await this.baseSelectQuery()
+    const row = await this.baseSelectQuery(manager)
       .where('ii.trip_id = :tripId AND ii.id = :itemId', { tripId, itemId })
       .getRawOne<RawItineraryRow>();
     return row ? this.mapRow(row) : null;
+  }
+
+  async findExistingIdsAndDays(
+    tripId: string,
+    itemIds: string[],
+    manager?: EntityManager,
+  ): Promise<Array<{ id: string; dayNumber: number }>> {
+    if (itemIds.length === 0) {
+      return [];
+    }
+    const repo = manager ? manager.getRepository(ItineraryItem) : this.repo;
+    const rows = await repo
+      .createQueryBuilder('ii')
+      .select(['ii.id AS id', 'ii.day_number AS day_number'])
+      .where('ii.trip_id = :tripId AND ii.id IN (:...itemIds)', {
+        tripId,
+        itemIds,
+      })
+      .getRawMany<{ id: string; day_number: number }>();
+
+    return rows.map((r) => ({ id: String(r.id), dayNumber: Number(r.day_number) }));
+  }
+
+  async batchUpdatePositions(
+    tripId: string,
+    entries: Array<{
+      itemId: string;
+      dayNumber: number;
+      timeSlot: TimeSlotType;
+      orderIndex: number;
+    }>,
+    manager: EntityManager,
+  ): Promise<void> {
+    for (const entry of entries) {
+      await manager.query(
+        `
+        UPDATE "itinerary_items"
+        SET "day_number" = $1,
+            "time_slot" = $2,
+            "order_index" = $3,
+            "updated_at" = CURRENT_TIMESTAMP
+        WHERE "id" = $4 AND "trip_id" = $5;
+        `,
+        [
+          entry.dayNumber,
+          entry.timeSlot,
+          entry.orderIndex,
+          entry.itemId,
+          tripId,
+        ],
+      );
+    }
+  }
+
+  async recalculateDayDistances(
+    tripId: string,
+    dayNumbers: number[],
+    detourThresholdKm: number,
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (dayNumbers.length === 0) {
+      return;
+    }
+    const executor = manager ?? this.repo.manager;
+    await executor.query(
+      `
+      WITH ordered AS (
+        SELECT
+          ii."id",
+          COALESCE(p."location", s."location") AS loc,
+          LAG(COALESCE(p."location", s."location")) OVER (
+            PARTITION BY ii."day_number"
+            ORDER BY
+              CASE ii."time_slot"
+                WHEN 'morning' THEN 0
+                WHEN 'lunch' THEN 1
+                WHEN 'afternoon' THEN 2
+                ELSE 3
+              END ASC,
+              ii."order_index" ASC,
+              ii."id" ASC
+          ) AS prev_loc
+        FROM "itinerary_items" ii
+        LEFT JOIN "places" p ON p."id" = ii."place_id"
+        LEFT JOIN "stays" s ON s."id" = ii."stay_id"
+        WHERE ii."trip_id" = $1 AND ii."day_number" = ANY($2::smallint[])
+      ),
+      computed AS (
+        SELECT
+          "id",
+          CASE
+            WHEN prev_loc IS NULL OR loc IS NULL THEN 0
+            ELSE ROUND((ST_DistanceSphere(prev_loc, loc) / 1000.0)::numeric, 2)
+          END AS dist_km
+        FROM ordered
+      )
+      UPDATE "itinerary_items" target
+      SET
+        "distance_from_prev_km" = computed.dist_km,
+        "is_detour_warning" = (computed.dist_km > $3),
+        "updated_at" = CURRENT_TIMESTAMP
+      FROM computed
+      WHERE target."id" = computed."id";
+      `,
+      [tripId, dayNumbers, detourThresholdKm],
+    );
   }
 
   async getNextOrderIndex(
@@ -133,8 +243,11 @@ export class ItineraryItemRepository {
     await this.repo.delete({ id: itemId, tripId });
   }
 
-  private baseSelectQuery(): SelectQueryBuilder<ItineraryItem> {
-    return this.repo
+  private baseSelectQuery(
+    manager?: EntityManager,
+  ): SelectQueryBuilder<ItineraryItem> {
+    const repo = manager ? manager.getRepository(ItineraryItem) : this.repo;
+    return repo
       .createQueryBuilder('ii')
       .leftJoin('places', 'p', 'p.id = ii.place_id')
       .leftJoin('stays', 's', 's.id = ii.stay_id')
