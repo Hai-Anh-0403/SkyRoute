@@ -315,6 +315,25 @@ export class TripsService {
     return trip;
   }
 
+  async getTripPlaceCentroidStats(
+    userId: string,
+    tripId: string,
+  ): Promise<{
+    tripId: number;
+    destinationCity: string;
+    centroidLocation: Coordinates | null;
+    totalItineraryPlaces: number;
+    placeLocations: Coordinates[];
+  }> {
+    const trip = await this.requireOwnedTrip(userId, tripId);
+    const stats = await this.tripRepo.findPlaceCentroidStats(tripId);
+    return {
+      tripId: trip.id,
+      destinationCity: trip.destinationCity,
+      ...stats,
+    };
+  }
+
   private assertValidDateRange(startDate: string, endDate: string): number {
     const start = startDate.slice(0, 10);
     const end = endDate.slice(0, 10);

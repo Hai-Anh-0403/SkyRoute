@@ -137,6 +137,75 @@ export class TripRepository {
     return { lat: Number(row.lat), lng: Number(row.lng) };
   }
 
+  async findPlaceCentroidStats(tripId: string): Promise<{
+    centroidLocation: Coordinates | null;
+    totalItineraryPlaces: number;
+    placeLocations: Coordinates[];
+  }> {
+    const rows = (await this.repo.manager.query(
+      `
+      WITH place_pts AS (
+        SELECT p."location"
+        FROM "itinerary_items" ii
+        INNER JOIN "places" p ON p."id" = ii."place_id"
+        WHERE ii."trip_id" = $1 AND ii."place_id" IS NOT NULL
+      ),
+      summary AS (
+        SELECT
+          COUNT(*)::int AS total_places,
+          ST_Y(ST_Centroid(ST_Collect("location"))) AS centroid_lat,
+          ST_X(ST_Centroid(ST_Collect("location"))) AS centroid_lng
+        FROM place_pts
+      )
+      SELECT
+        s.total_places,
+        s.centroid_lat,
+        s.centroid_lng,
+        ST_Y(pp."location") AS place_lat,
+        ST_X(pp."location") AS place_lng
+      FROM summary s
+      LEFT JOIN place_pts pp ON TRUE;
+      `,
+      [tripId],
+    )) as Array<{
+      total_places: number;
+      centroid_lat: string | number | null;
+      centroid_lng: string | number | null;
+      place_lat: string | number | null;
+      place_lng: string | number | null;
+    }>;
+
+    const first = rows[0];
+    if (!first || Number(first.total_places) === 0) {
+      return {
+        centroidLocation: null,
+        totalItineraryPlaces: 0,
+        placeLocations: [],
+      };
+    }
+
+    const centroidLocation =
+      first.centroid_lat !== null && first.centroid_lng !== null
+        ? {
+            lat: Number(first.centroid_lat),
+            lng: Number(first.centroid_lng),
+          }
+        : null;
+
+    const placeLocations: Coordinates[] = rows
+      .filter((r) => r.place_lat !== null && r.place_lng !== null)
+      .map((r) => ({
+        lat: Number(r.place_lat),
+        lng: Number(r.place_lng),
+      }));
+
+    return {
+      centroidLocation,
+      totalItineraryPlaces: Number(first.total_places),
+      placeLocations,
+    };
+  }
+
   private baseSelectQuery(): SelectQueryBuilder<Trip> {
     return this.repo
       .createQueryBuilder('t')
