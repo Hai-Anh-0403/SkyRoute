@@ -2,7 +2,11 @@
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { AlertTriangle, CloudRain, GripVertical, Trash2 } from 'lucide-react';
+import { AlertTriangle, GripVertical, Trash2 } from 'lucide-react';
+import {
+  SlotWeatherBadge,
+  WeatherConflictBanner,
+} from '@/features/weather-fallback';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
 import type { ItineraryItem } from '../types/trip.types';
 
@@ -13,6 +17,7 @@ interface TimelineItemCardProps {
 
 export function TimelineItemCard({ item, onDelete }: TimelineItemCardProps) {
   const setHoveredPlaceId = useWorkspaceStore((s) => s.setHoveredPlaceId);
+  const setActivePlanBItemId = useWorkspaceStore((s) => s.setActivePlanBItemId);
   const {
     attributes,
     listeners,
@@ -102,13 +107,20 @@ export function TimelineItemCard({ item, onDelete }: TimelineItemCardProps) {
               </span>
             )}
 
-            {item.weatherAlertFlag && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 font-semibold text-rose-700">
-                <CloudRain className="h-3 w-3" />
-                Mưa {item.rainProbability ?? 0}%
-              </span>
-            )}
+            <SlotWeatherBadge
+              weatherCondition={item.weatherCondition}
+              temperatureC={item.temperatureC}
+              rainProbability={item.rainProbability}
+            />
           </div>
+
+          {item.weatherAlertFlag && (
+            <WeatherConflictBanner
+              itemId={item.id}
+              rainProbability={item.rainProbability}
+              onOpenPlanB={setActivePlanBItemId}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Calendar, MapPin } from 'lucide-react';
+import { ArrowLeft, Calendar, CloudRain, MapPin, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
@@ -12,9 +12,14 @@ import {
   type PlaceCategory,
   type PlaceItem,
 } from '@/features/discovery';
+import {
+  PlanBSwapDrawer,
+  usePlanBCandidates,
+  useSyncTripWeather,
+} from '@/features/weather-fallback';
 import { ROUTES } from '@/shared/lib/routes';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
-import type { TimeSlotType } from '@/shared/types/geo.types';
+import type { MapPlanBPreview, TimeSlotType } from '@/shared/types/geo.types';
 import { useReorderTimeline } from '../hooks/useReorderTimeline';
 import {
   useAddTimelineItem,
@@ -39,11 +44,14 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const setActiveDayNumber = useWorkspaceStore((s) => s.setActiveDayNumber);
   const radarAnchorCoords = useWorkspaceStore((s) => s.radarAnchorCoords);
   const radarRadiusKm = useWorkspaceStore((s) => s.radarRadiusKm);
+  const activePlanBItemId = useWorkspaceStore((s) => s.activePlanBItemId);
 
   const tripQuery = useTripDetail(tripId);
   const addMutation = useAddTimelineItem(tripId);
   const deleteMutation = useDeleteTimelineItem(tripId);
   const reorderMutation = useReorderTimeline(tripId);
+  const syncWeatherMutation = useSyncTripWeather(tripId);
+  const planBCandidatesQuery = usePlanBCandidates(tripId, activePlanBItemId);
 
   const anchor = radarAnchorCoords ?? DEFAULT_DALAT_CENTER;
   const radarQuery = useRadarPlaces(
@@ -65,6 +73,24 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
     () => (trip ? buildDailyRouteSegments(trip.items, activeDayNumber) : []),
     [trip, activeDayNumber],
   );
+
+  const planBPreview = useMemo<MapPlanBPreview | null>(() => {
+    const data = planBCandidatesQuery.data;
+    if (activePlanBItemId === null || !data) {
+      return null;
+    }
+    return {
+      anchor: data.anchorLocation,
+      radiusMeters: data.radiusMeters,
+      candidates: data.candidates.map((c) => ({
+        placeId: c.placeId,
+        name: c.name,
+        location: c.location,
+        distanceFromPrevKm: c.distanceFromPrevKm,
+        rating: c.rating,
+      })),
+    };
+  }, [activePlanBItemId, planBCandidatesQuery.data]);
 
   const mapPlaces = useMemo<PlaceItem[]>(() => {
     const byId = new Map<number, PlaceItem>();
@@ -160,21 +186,47 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {days.map((day) => (
-            <button
-              key={day}
-              type="button"
-              onClick={() => setActiveDayNumber(day)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                activeDayNumber === day
-                  ? 'bg-sky-600 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              Ngày {day}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={syncWeatherMutation.isPending}
+            onClick={() => syncWeatherMutation.mutate(undefined)}
+            className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:opacity-60"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Đồng bộ Thời tiết
+          </button>
+          <button
+            type="button"
+            disabled={syncWeatherMutation.isPending}
+            onClick={() =>
+              syncWeatherMutation.mutate({
+                dayNumber: activeDayNumber,
+                timeSlot: 'afternoon',
+                rainProbability: 75,
+              })
+            }
+            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+          >
+            <CloudRain className="h-3.5 w-3.5" />
+            Giả lập Mưa 75%
+          </button>
+          <div className="flex items-center gap-1.5">
+            {days.map((day) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => setActiveDayNumber(day)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  activeDayNumber === day
+                    ? 'bg-sky-600 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Ngày {day}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -257,11 +309,14 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
           <InteractiveMap
             places={mapPlaces}
             routeSegments={dailyRouteSegments}
+            planBPreview={planBPreview}
             showRadar={panelTab === 'radar'}
             onSelectPlace={handleQuickAddPlace}
           />
         </section>
       </div>
+
+      <PlanBSwapDrawer tripId={tripId} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ import {
   Tooltip,
 } from 'react-leaflet';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
-import type { MapRouteSegment } from '@/shared/types/geo.types';
+import type { MapPlanBPreview, MapRouteSegment } from '@/shared/types/geo.types';
 import type { PlaceItem } from '../types/discovery.types';
 import { MapViewportController } from './MapViewportController';
 import { PlaceMarker } from './PlaceMarker';
@@ -21,6 +21,7 @@ export const DA_LAT_CENTER = { lat: 11.9404, lng: 108.4583 };
 export interface MapCanvasProps {
   places: PlaceItem[];
   routeSegments?: MapRouteSegment[];
+  planBPreview?: MapPlanBPreview | null;
   showRadar?: boolean;
   onSelectPlace?: (place: PlaceItem) => void;
   allowAnchorClick?: boolean;
@@ -31,6 +32,7 @@ export interface MapCanvasProps {
 export function MapCanvas({
   places,
   routeSegments = [],
+  planBPreview = null,
   showRadar = true,
   onSelectPlace,
   allowAnchorClick = true,
@@ -126,7 +128,41 @@ export function MapCanvas({
           />
         ))}
 
-        {/* Extensible slot for Plan B Preview and Centroid Stay layers */}
+        {/* Layer 3: Plan B Indoor Search Zone (<3km) & Candidate Pins */}
+        {planBPreview && (
+          <>
+            <Circle
+              center={[planBPreview.anchor.lat, planBPreview.anchor.lng]}
+              radius={planBPreview.radiusMeters}
+              pathOptions={{
+                color: '#059669',
+                fillColor: '#10b981',
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: '6 6',
+              }}
+            />
+            {planBPreview.candidates.map((candidate) => (
+              <CircleMarker
+                key={`plan-b-${candidate.placeId}`}
+                center={[candidate.location.lat, candidate.location.lng]}
+                radius={9}
+                pathOptions={{
+                  color: '#ffffff',
+                  fillColor: '#059669',
+                  fillOpacity: 1,
+                  weight: 2.5,
+                }}
+              >
+                <Tooltip direction="top">
+                  Plan B: {candidate.name} ({candidate.distanceFromPrevKm.toFixed(1)} km)
+                </Tooltip>
+              </CircleMarker>
+            ))}
+          </>
+        )}
+
+        {/* Extensible slot for Centroid Stay layer */}
         {children}
       </MapContainer>
     </div>

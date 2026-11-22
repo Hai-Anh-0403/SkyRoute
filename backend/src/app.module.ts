@@ -6,6 +6,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import * as path from 'path';
 import { RedisModule } from './core/cache/redis.module';
 import { DatabaseModule } from './core/database/database.module';
+import { AiCopilotModule } from './features/ai-copilot/ai-copilot.module';
 import { AuthModule } from './features/auth/auth.module';
 import { DiscoveryModule } from './features/discovery/discovery.module';
 import { TripsModule } from './features/trips/trips.module';
@@ -36,6 +37,7 @@ export class HealthController {
     DiscoveryModule,
     TripsModule,
     WeatherModule,
+    AiCopilotModule,
   ],
   controllers: [HealthController],
 })

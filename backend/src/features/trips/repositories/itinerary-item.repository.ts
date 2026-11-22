@@ -185,6 +185,78 @@ export class ItineraryItemRepository {
     );
   }
 
+  async updateWeatherBatch(
+    updates: Array<{
+      id: string;
+      weatherCondition: string;
+      temperatureC: number;
+      rainProbability: number;
+      weatherAlertFlag: boolean;
+    }>,
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (updates.length === 0) {
+      return;
+    }
+    const executor = manager ?? this.repo.manager;
+    for (const u of updates) {
+      await executor.query(
+        `
+        UPDATE "itinerary_items"
+        SET "weather_condition" = $1,
+            "temperature_c" = $2,
+            "rain_probability" = $3,
+            "weather_alert_flag" = $4,
+            "updated_at" = CURRENT_TIMESTAMP
+        WHERE "id" = $5;
+        `,
+        [
+          u.weatherCondition,
+          u.temperatureC,
+          u.rainProbability,
+          u.weatherAlertFlag,
+          u.id,
+        ],
+      );
+    }
+  }
+
+  async swapPlaceInTransaction(
+    tripId: string,
+    itemId: string,
+    replacementPlaceId: string,
+    note: string | undefined,
+    manager: EntityManager,
+  ): Promise<void> {
+    if (note !== undefined) {
+      await manager.query(
+        `
+        UPDATE "itinerary_items"
+        SET "place_id" = $1,
+            "stay_id" = NULL,
+            "weather_alert_flag" = FALSE,
+            "note" = $2,
+            "updated_at" = CURRENT_TIMESTAMP
+        WHERE "id" = $3 AND "trip_id" = $4;
+        `,
+        [replacementPlaceId, note.trim() || null, itemId, tripId],
+      );
+      return;
+    }
+
+    await manager.query(
+      `
+      UPDATE "itinerary_items"
+      SET "place_id" = $1,
+          "stay_id" = NULL,
+          "weather_alert_flag" = FALSE,
+          "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = $2 AND "trip_id" = $3;
+      `,
+      [replacementPlaceId, itemId, tripId],
+    );
+  }
+
   async getNextOrderIndex(
     tripId: string,
     dayNumber: number,

@@ -47,13 +47,16 @@ describe('TimelineItemCard', () => {
     cleanup();
   });
 
-  it('renders place info, outdoor badge, detour warning, and weather alert', () => {
+  it('renders place info, outdoor badge, detour warning, weather alert, and opens Plan B drawer', () => {
     render(<TimelineItemCard item={makeItem()} onDelete={vi.fn()} />);
 
     expect(screen.getByText('Đồi Chè Cầu Đất')).toBeInTheDocument();
     expect(screen.getByText('Ngoài trời')).toBeInTheDocument();
     expect(screen.getByText(/Ngược đường \(11\.8 km\)/)).toBeInTheDocument();
     expect(screen.getByText(/Mưa 75%/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Tìm Kế hoạch B/i }));
+    expect(useWorkspaceStore.getState().activePlanBItemId).toBe(103);
   });
 
   it('syncs hoveredPlaceId with workspace store and triggers onDelete', () => {
