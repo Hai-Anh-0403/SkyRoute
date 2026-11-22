@@ -24,8 +24,8 @@ The system is a feature-based modular monolith:
 | Product domain | [share/Readme.md](share/Readme.md) | original scope, MVP, and roadmap |
 | Database | [share/DATABASE.md](share/DATABASE.md) | tables, constraints, indexes, Redis keys, spatial rules |
 | API | [share/API_SPEC.md](share/API_SPEC.md) | `/api/v1` contract, payloads, error codes, retry policy |
-| Backend | [backend/AGENT.md](backend/AGENT.md), [BE-PROJECT-RULES.md](backend/BE-PROJECT-RULES.md), [BE-ARCHITECTURE.md](backend/BE-ARCHITECTURE.md) | NestJS boundaries and runtime design |
-| Frontend | [frontend/AGENT.md](frontend/AGENT.md), [FE-PROJECT-RULES.md](frontend/FE-PROJECT-RULES.md), [FE-ARCHITECTURE.md](frontend/FE-ARCHITECTURE.md) | Next.js boundaries and UI/data flow |
+| Backend | [backend/AGENT.md](backend/AGENT.md), [PROJECT-RULES.md](backend/docs/PROJECT-RULES.md), [ARCHITECTURE.md](backend/docs/ARCHITECTURE.md) | NestJS boundaries, modules, and runtime design |
+| Frontend | [frontend/AGENT.md](frontend/AGENT.md), [PROJECT-RULES.md](frontend/docs/PROJECT-RULES.md), [ARCHITECTURE.md](frontend/docs/ARCHITECTURE.md) | Next.js boundaries, features, and UI/data flow |
 | Delivery | [tasks/plan.md](tasks/plan.md), [tasks/todo.md](tasks/todo.md) | phased tasks and acceptance checks |
 
 When documents conflict, the latest contract documents (`DATABASE.md` and `API_SPEC.md`) govern data/API behavior. Update affected documents together when changing a contract.

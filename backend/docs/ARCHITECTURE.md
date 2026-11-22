@@ -1,5 +1,3 @@
-Write ARCHITECTURE.md for Backend (Feature-based) based on:
-
 # SkyRoute Backend Architecture
 
 ## System overview
@@ -21,7 +19,7 @@ flowchart LR
   AI --> LLM[Gemini / OpenAI]
 ```
 
-The REST contract is [API_SPEC.md](../share/API_SPEC.md); the persisted model and spatial indexes are [DATABASE.md](../share/DATABASE.md). Neither is duplicated by controller-local types.
+The REST contract is [API_SPEC.md](../../share/API_SPEC.md); the persisted model and spatial indexes are [DATABASE.md](../../share/DATABASE.md). Neither is duplicated by controller-local types.
 
 ## Runtime composition
 
@@ -169,4 +167,4 @@ All configuration is read through `ConfigService` and validated at startup. Pass
 - State-changing endpoints are not retry-safe until an atomic idempotency storage design exists.
 - Use `DataSource.transaction()` or `QueryRunner` for every multi-table mutation.
 - Test services with mocked integrations, repositories against PostGIS, and ownership/response contracts end-to-end.
-- A schema or endpoint change must update the migration, [DATABASE.md](../share/DATABASE.md), and [API_SPEC.md](../share/API_SPEC.md) in the same change set.
+- A schema or endpoint change must update the migration, [DATABASE.md](../../share/DATABASE.md), and [API_SPEC.md](../../share/API_SPEC.md) in the same change set.

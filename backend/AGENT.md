@@ -1,6 +1,6 @@
 # SkyRoute Backend — Agent Context (`backend/AGENT.md`)
 
-> Applies to work in `backend/`. Read [../AGENT.md](../AGENT.md) first, then use this file with [BE-PROJECT-RULES.md](BE-PROJECT-RULES.md), [BE-ARCHITECTURE.md](BE-ARCHITECTURE.md), and the shared contracts.
+> Applies to work in `backend/`. Read [../AGENT.md](../AGENT.md) first, then use this file with [docs/PROJECT-RULES.md](docs/PROJECT-RULES.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and the shared contracts.
 
 ## Stack and source of truth
 

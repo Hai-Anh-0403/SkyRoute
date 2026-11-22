@@ -1,5 +1,3 @@
-Write ARCHITECTURE.md for Frontend (Feature-based Next.js App Router) based on:
-
 # SkyRoute Frontend Architecture
 
 ## Overview
@@ -183,7 +181,7 @@ Render the conflict action only when the API provides `isOutdoor && rainProbabil
 
 ## Contract change procedure
 
-1. Update [API_SPEC.md](../share/API_SPEC.md) before changing a feature service or typed response.
+1. Update [API_SPEC.md](../../share/API_SPEC.md) before changing a feature service or typed response.
 2. Update Zod schemas, TypeScript types, service methods, hooks, and tests in the same feature slice.
 3. Add query invalidation if the mutation changes another feature's derived data.
-4. Update [FE-PROJECT-RULES.md](FE-PROJECT-RULES.md) or `CONTEXT.md` when the architecture rule or local decision changes.
+4. Update [PROJECT-RULES.md](PROJECT-RULES.md) or `CONTEXT.md` when the architecture rule or local decision changes.

@@ -1,5 +1,3 @@
-Write PROJECT-RULES.md for Frontend (Feature-based Next.js App Router) based on the project context above.
-
 # SkyRoute Frontend Project Rules
 
 ## Core structure
@@ -101,7 +99,7 @@ export default async function TripPage({ params }: { params: Promise<{ tripId: s
 - Branches: `feature/fe-<feature>-<summary>` or `fix/fe-<feature>-<summary>`.
 - Commits: `feat(<feature>): <description>` or `fix(<feature>): <description>`.
 - Each PR covers one vertical slice/fix, includes map/timeline screenshots or recording when applicable, and passes lint, type-check, tests, and build.
-- Update `API_SPEC.md`, `FE-ARCHITECTURE.md`, and feature `CONTEXT.md` when the change alters a documented contract or architecture decision.
+- Update `API_SPEC.md`, [ARCHITECTURE.md](ARCHITECTURE.md), and feature `CONTEXT.md` when the change alters a documented contract or architecture decision.
 
 ## Do / do not
 

@@ -1,5 +1,3 @@
-Write PROJECT-RULES.md for Backend (Feature-based) based on the project context above.
-
 # SkyRoute Backend Project Rules
 
 ## Stack and non-negotiable boundaries
@@ -56,7 +54,7 @@ Use exported services for synchronous collaboration. Use `EventEmitter2` for sid
 
 ## HTTP contract rules
 
-- Implement `/api/v1` exactly as documented in [API_SPEC.md](../share/API_SPEC.md). A controller must not invent a second response shape.
+- Implement `/api/v1` exactly as documented in [API_SPEC.md](../../share/API_SPEC.md). A controller must not invent a second response shape.
 - Success responses pass through `TransformInterceptor`: `{ success: true, data, message?, meta? }`.
 - `AllExceptionsFilter` maps all errors to `{ success: false, error: { code, message, details? } }`. Use documented domain codes such as `DISC_003`, `WTHR_002`, and `AI_001`.
 - Validate only at external boundaries with DTOs and global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`.

@@ -6,7 +6,7 @@
 
 - Stack: Next.js 15 App Router, React 19, TypeScript strict mode, Tailwind CSS, shadcn/ui, TanStack Query v5, Zustand, React Leaflet, `@dnd-kit`, Axios, React Hook Form, and Zod.
 - This is a feature-based frontend. `src/app/` is a thin route/layout shell; domain code belongs in `src/features/`.
-- API contract: [../share/API_SPEC.md](../share/API_SPEC.md). Data model: [../share/DATABASE.md](../share/DATABASE.md). Frontend guidance: [FE-PROJECT-RULES.md](FE-PROJECT-RULES.md) and [FE-ARCHITECTURE.md](FE-ARCHITECTURE.md).
+- API contract: [../share/API_SPEC.md](../share/API_SPEC.md). Data model: [../share/DATABASE.md](../share/DATABASE.md). Frontend guidance: [docs/PROJECT-RULES.md](docs/PROJECT-RULES.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Feature map
 
