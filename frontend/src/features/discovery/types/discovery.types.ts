@@ -65,3 +65,26 @@ export interface PlaceListResponse {
     totalPages: number;
   };
 }
+
+export type WeatherFoodProfile = 'cold_rainy' | 'hot_sunny' | 'mild';
+
+export interface FoodRecommendationQueryParams {
+  city?: string;
+  lat?: number;
+  lng?: number;
+  temperatureC?: number;
+  rainProbability?: number;
+  page?: number;
+  limit?: number;
+}
+
+export interface FoodRecommendationsResponse {
+  data: PlaceItem[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    weatherProfile: WeatherFoodProfile;
+  };
+}
