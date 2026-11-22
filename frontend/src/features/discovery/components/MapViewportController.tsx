@@ -14,6 +14,7 @@ export function MapViewportController({
   const map = useMap();
   const radarAnchorCoords = useWorkspaceStore((s) => s.radarAnchorCoords);
   const setRadarAnchorCoords = useWorkspaceStore((s) => s.setRadarAnchorCoords);
+  const focusedMapCoords = useWorkspaceStore((s) => s.focusedMapCoords);
 
   useEffect(() => {
     if (!radarAnchorCoords) {
@@ -25,6 +26,17 @@ export function MapViewportController({
       { duration: 0.6 },
     );
   }, [map, radarAnchorCoords]);
+
+  useEffect(() => {
+    if (!focusedMapCoords) {
+      return;
+    }
+    map.flyTo(
+      [focusedMapCoords.lat, focusedMapCoords.lng],
+      Math.max(map.getZoom(), 14),
+      { duration: 0.6 },
+    );
+  }, [map, focusedMapCoords]);
 
   useMapEvents({
     click(event) {

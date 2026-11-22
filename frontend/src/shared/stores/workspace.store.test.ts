@@ -33,4 +33,17 @@ describe('useWorkspaceStore', () => {
     expect(state.activePlanBItemId).toBe(103);
     expect(state.radarAnchorCoords).toEqual({ lat: 11.9404, lng: 108.4583 });
   });
+
+  it('tracks centroid stay drawer, hoveredStayId, and focusedMapCoords', () => {
+    useWorkspaceStore.getState().setCentroidStayDrawerOpen(true);
+    useWorkspaceStore.getState().setHoveredStayId(7);
+    useWorkspaceStore
+      .getState()
+      .setFocusedMapCoords({ lat: 11.9412, lng: 108.451 });
+
+    const state = useWorkspaceStore.getState();
+    expect(state.isCentroidStayDrawerOpen).toBe(true);
+    expect(state.hoveredStayId).toBe(7);
+    expect(state.focusedMapCoords).toEqual({ lat: 11.9412, lng: 108.451 });
+  });
 });
