@@ -1,17 +1,23 @@
 'use client';
 
-import { ArrowLeft, Calendar, CloudRain, MapPin, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { AiPromptModal } from '@/features/ai-copilot';
 import {
   InteractiveMap,
   MultiLayerFilterBar,
   ProximityRadarControl,
+  WeatherFoodPanel,
   useRadarPlaces,
   type DiscoveryFilters,
   type PlaceCategory,
   type PlaceItem,
 } from '@/features/discovery';
+import {
+  CentroidMapPin,
+  CentroidStayDrawer,
+  useCentroidStays,
+} from '@/features/stay-finder';
 import {
   PlanBSwapDrawer,
   usePlanBCandidates,
@@ -28,6 +34,7 @@ import {
 } from '../hooks/useTripQueries';
 import { buildDailyRouteSegments, sortDayItems } from '../utils/route.utils';
 import { TimelineBoard } from './TimelineBoard';
+import { TripWorkspaceHeader } from './TripWorkspaceHeader';
 
 interface TripWorkspaceProps {
   tripId: number;
@@ -37,14 +44,25 @@ const DEFAULT_DALAT_CENTER = { lat: 11.9404, lng: 108.4583 };
 
 export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const [panelTab, setPanelTab] = useState<'timeline' | 'radar'>('timeline');
+  const [radarSubMode, setRadarSubMode] = useState<'radar' | 'food'>('radar');
   const [targetSlot, setTargetSlot] = useState<TimeSlotType>('morning');
   const [filters, setFilters] = useState<DiscoveryFilters>({ city: 'Da Lat' });
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
   const activeDayNumber = useWorkspaceStore((s) => s.activeDayNumber);
   const setActiveDayNumber = useWorkspaceStore((s) => s.setActiveDayNumber);
   const radarAnchorCoords = useWorkspaceStore((s) => s.radarAnchorCoords);
   const radarRadiusKm = useWorkspaceStore((s) => s.radarRadiusKm);
   const activePlanBItemId = useWorkspaceStore((s) => s.activePlanBItemId);
+  const isCentroidStayDrawerOpen = useWorkspaceStore(
+    (s) => s.isCentroidStayDrawerOpen,
+  );
+  const setCentroidStayDrawerOpen = useWorkspaceStore(
+    (s) => s.setCentroidStayDrawerOpen,
+  );
+  const hoveredStayId = useWorkspaceStore((s) => s.hoveredStayId);
+  const setHoveredStayId = useWorkspaceStore((s) => s.setHoveredStayId);
+  const setFocusedMapCoords = useWorkspaceStore((s) => s.setFocusedMapCoords);
 
   const tripQuery = useTripDetail(tripId);
   const addMutation = useAddTimelineItem(tripId);
@@ -53,12 +71,19 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const syncWeatherMutation = useSyncTripWeather(tripId);
   const planBCandidatesQuery = usePlanBCandidates(tripId, activePlanBItemId);
 
+  const trip = tripQuery.data;
+  const hasCentroid = Boolean(trip?.centroidLocation);
+  const centroidStaysQuery = useCentroidStays(
+    tripId,
+    isCentroidStayDrawerOpen || hasCentroid,
+  );
+
   const anchor = radarAnchorCoords ?? DEFAULT_DALAT_CENTER;
   const radarQuery = useRadarPlaces(
     panelTab === 'radar'
       ? {
           ...filters,
-          city: tripQuery.data?.destinationCity ?? filters.city,
+          city: trip?.destinationCity ?? filters.city,
           lat: anchor.lat,
           lng: anchor.lng,
           radiusKm: radarRadiusKm,
@@ -66,8 +91,6 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
         }
       : null,
   );
-
-  const trip = tripQuery.data;
 
   const dailyRouteSegments = useMemo(
     () => (trip ? buildDailyRouteSegments(trip.items, activeDayNumber) : []),
@@ -135,6 +158,16 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
     setPanelTab('timeline');
   };
 
+  const handleToggleCentroidDrawer = () => {
+    const nextOpen = !isCentroidStayDrawerOpen;
+    setCentroidStayDrawerOpen(nextOpen);
+    const centroid =
+      centroidStaysQuery.data?.centroidLocation ?? trip?.centroidLocation;
+    if (nextOpen && centroid) {
+      setFocusedMapCoords(centroid);
+    }
+  };
+
   if (tripQuery.isLoading) {
     return (
       <div className="p-6 text-sm text-slate-500">
@@ -160,75 +193,32 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
     );
   }
 
-  const days = Array.from({ length: trip.totalDays }, (_, i) => i + 1);
+  const activeCentroid =
+    centroidStaysQuery.data?.centroidLocation ?? trip.centroidLocation;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
-        <div className="flex items-center gap-3">
-          <Link
-            href={ROUTES.TRIPS}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Chuyến đi
-          </Link>
-          <div>
-            <h1 className="text-base font-bold text-slate-900">{trip.title}</h1>
-            <p className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="h-3 w-3" /> {trip.destinationCity}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Calendar className="h-3 w-3" /> {trip.startDate} → {trip.endDate}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={syncWeatherMutation.isPending}
-            onClick={() => syncWeatherMutation.mutate(undefined)}
-            className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:opacity-60"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Đồng bộ Thời tiết
-          </button>
-          <button
-            type="button"
-            disabled={syncWeatherMutation.isPending}
-            onClick={() =>
-              syncWeatherMutation.mutate({
-                dayNumber: activeDayNumber,
-                timeSlot: 'afternoon',
-                rainProbability: 75,
-              })
-            }
-            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-          >
-            <CloudRain className="h-3.5 w-3.5" />
-            Giả lập Mưa 75%
-          </button>
-          <div className="flex items-center gap-1.5">
-            {days.map((day) => (
-              <button
-                key={day}
-                type="button"
-                onClick={() => setActiveDayNumber(day)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  activeDayNumber === day
-                    ? 'bg-sky-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                Ngày {day}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
+      <TripWorkspaceHeader
+        title={trip.title}
+        destinationCity={trip.destinationCity}
+        startDate={trip.startDate}
+        endDate={trip.endDate}
+        totalDays={trip.totalDays}
+        activeDayNumber={activeDayNumber}
+        isWeatherSyncing={syncWeatherMutation.isPending}
+        isCentroidOpen={isCentroidStayDrawerOpen}
+        onSelectDay={setActiveDayNumber}
+        onSyncWeather={() => syncWeatherMutation.mutate(undefined)}
+        onSimulateRain={() =>
+          syncWeatherMutation.mutate({
+            dayNumber: activeDayNumber,
+            timeSlot: 'afternoon',
+            rainProbability: 75,
+          })
+        }
+        onToggleCentroidDrawer={handleToggleCentroidDrawer}
+        onOpenAiModal={() => setIsAiModalOpen(true)}
+      />
 
       <div className="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-12">
         <aside className="flex flex-col gap-3 lg:col-span-5">
@@ -266,40 +256,88 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
                 onDeleteItem={(itemId) => deleteMutation.mutate(itemId)}
                 onAddFromRadar={(slot) => {
                   setTargetSlot(slot);
+                  setRadarSubMode(
+                    slot === 'lunch' || slot === 'dinner' ? 'food' : 'radar',
+                  );
                   setPanelTab('radar');
                 }}
               />
             ) : (
               <div className="space-y-3">
-                <ProximityRadarControl totalFound={radarQuery.data?.meta?.total} />
-                <MultiLayerFilterBar filters={filters} onChange={setFilters} />
-                <div className="space-y-2">
-                  {(radarQuery.data?.data ?? []).map((place) => (
-                    <div
-                      key={place.id}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3"
+                {(targetSlot === 'lunch' || targetSlot === 'dinner') && (
+                  <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-white p-1">
+                    <button
+                      type="button"
+                      onClick={() => setRadarSubMode('radar')}
+                      className={`rounded-lg py-1 text-xs font-semibold ${
+                        radarSubMode === 'radar'
+                          ? 'bg-sky-600 text-white'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
                     >
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">
-                          {place.name}
+                      Quét Radar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRadarSubMode('food')}
+                      className={`rounded-lg py-1 text-xs font-semibold ${
+                        radarSubMode === 'food'
+                          ? 'bg-amber-600 text-white'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      Ẩm thực theo thời tiết
+                    </button>
+                  </div>
+                )}
+
+                {radarSubMode === 'food' &&
+                (targetSlot === 'lunch' || targetSlot === 'dinner') ? (
+                  <WeatherFoodPanel
+                    city={trip.destinationCity}
+                    lat={anchor.lat}
+                    lng={anchor.lng}
+                    onSelectPlace={handleQuickAddPlace}
+                    actionLabel={`+ ${targetSlot}`}
+                  />
+                ) : (
+                  <>
+                    <ProximityRadarControl
+                      totalFound={radarQuery.data?.meta?.total}
+                    />
+                    <MultiLayerFilterBar
+                      filters={filters}
+                      onChange={setFilters}
+                    />
+                    <div className="space-y-2">
+                      {(radarQuery.data?.data ?? []).map((place) => (
+                        <div
+                          key={place.id}
+                          className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-slate-900">
+                              {place.name}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {place.isOutdoor ? 'Ngoài trời' : 'Trong nhà'}
+                              {place.distanceKm !== undefined
+                                ? ` • ${place.distanceKm.toFixed(2)} km`
+                                : ''}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAddPlace(place)}
+                            className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+                          >
+                            + {targetSlot}
+                          </button>
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {place.isOutdoor ? 'Ngoài trời' : 'Trong nhà'}
-                          {place.distanceKm !== undefined
-                            ? ` • ${place.distanceKm.toFixed(2)} km`
-                            : ''}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleQuickAddPlace(place)}
-                        className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
-                      >
-                        + {targetSlot}
-                      </button>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -312,11 +350,43 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
             planBPreview={planBPreview}
             showRadar={panelTab === 'radar'}
             onSelectPlace={handleQuickAddPlace}
-          />
+          >
+            {activeCentroid && (
+              <CentroidMapPin
+                centroidLocation={activeCentroid}
+                totalItineraryPlaces={
+                  centroidStaysQuery.data?.totalItineraryPlaces ??
+                  trip.items.filter((i) => i.placeId !== null).length
+                }
+                stays={centroidStaysQuery.data?.recommendedStays ?? []}
+                showStays={isCentroidStayDrawerOpen}
+                hoveredStayId={hoveredStayId}
+                onHoverStay={setHoveredStayId}
+              />
+            )}
+          </InteractiveMap>
         </section>
       </div>
 
       <PlanBSwapDrawer tripId={tripId} />
+      <CentroidStayDrawer
+        tripId={tripId}
+        isAddingStay={addMutation.isPending}
+        onAddStay={(stayId) =>
+          addMutation.mutate({
+            stayId,
+            dayNumber: activeDayNumber,
+            timeSlot: 'dinner',
+            note: 'Lưu trú tối ưu gần tâm chuyến đi',
+          })
+        }
+      />
+      <AiPromptModal
+        tripId={tripId}
+        destinationCity={trip.destinationCity}
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type {
   ReorderItineraryResponse,
   TripDetail,
   TripSummary,
+  UpdateTripRequest,
 } from '../types/trip.types';
 
 export const tripService = {
@@ -30,6 +31,17 @@ export const tripService = {
   async getTripDetail(tripId: number): Promise<TripDetail> {
     const res = await apiClient.get<ApiResponse<TripDetail>>(
       `/trips/${tripId}`,
+    );
+    return res.data.data;
+  },
+
+  async updateTrip(
+    tripId: number,
+    payload: UpdateTripRequest,
+  ): Promise<TripSummary> {
+    const res = await apiClient.patch<ApiResponse<TripSummary>>(
+      `/trips/${tripId}`,
+      payload,
     );
     return res.data.data;
   },

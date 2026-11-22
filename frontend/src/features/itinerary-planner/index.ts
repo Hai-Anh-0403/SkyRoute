@@ -1,5 +1,6 @@
 export { TimelineBoard } from './components/TimelineBoard';
 export { TimelineItemCard } from './components/TimelineItemCard';
+export { TripEditModal } from './components/TripEditModal';
 export { TripsDashboard } from './components/TripsDashboard';
 export { TripWorkspace } from './components/TripWorkspace';
 export { useReorderTimeline } from './hooks/useReorderTimeline';
@@ -7,8 +8,10 @@ export {
   useAddTimelineItem,
   useCreateTrip,
   useDeleteTimelineItem,
+  useDeleteTrip,
   useTripDetail,
   useTripsList,
+  useUpdateTrip,
 } from './hooks/useTripQueries';
 export { tripService } from './services/trip.service';
 export {
@@ -26,4 +29,5 @@ export type {
   TripDetail,
   TripStatusType,
   TripSummary,
+  UpdateTripRequest,
 } from './types/trip.types';

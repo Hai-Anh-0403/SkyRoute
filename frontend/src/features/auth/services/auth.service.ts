@@ -5,6 +5,7 @@ import type {
   AuthUser,
   LoginRequest,
   RegisterRequest,
+  UpdateProfileRequest,
 } from '../types/auth.types';
 
 export const authService = {
@@ -41,6 +42,14 @@ export const authService = {
 
   async getMe(): Promise<AuthUser> {
     const res = await apiClient.get<ApiResponse<AuthUser>>('/auth/me');
+    return res.data.data;
+  },
+
+  async updateMe(payload: UpdateProfileRequest): Promise<AuthUser> {
+    const res = await apiClient.patch<ApiResponse<AuthUser>>(
+      '/auth/me',
+      payload,
+    );
     return res.data.data;
   },
 };

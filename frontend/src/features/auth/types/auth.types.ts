@@ -1,9 +1,24 @@
+export type BudgetPreference = 'low' | 'medium' | 'high';
+
+export interface UserTravelPreferences {
+  budget?: BudgetPreference;
+  interests?: string[];
+  preferIndoor?: boolean;
+  [key: string]: unknown;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   fullName: string;
   avatarUrl: string | null;
-  preferences: Record<string, unknown>;
+  preferences: UserTravelPreferences;
+}
+
+export interface UpdateProfileRequest {
+  fullName?: string;
+  avatarUrl?: string;
+  preferences?: UserTravelPreferences;
 }
 
 export interface LoginRequest {

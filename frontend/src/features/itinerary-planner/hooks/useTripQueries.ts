@@ -10,6 +10,7 @@ import { tripService } from '../services/trip.service';
 import type {
   AddItineraryItemRequest,
   CreateTripRequest,
+  UpdateTripRequest,
 } from '../types/trip.types';
 
 function extractError(err: unknown, fallback: string): string {
@@ -78,6 +79,43 @@ export function useDeleteTimelineItem(tripId: number) {
     },
     onError: (err) => {
       toast.error(extractError(err, 'Không thể xóa mục khỏi lịch trình.'));
+    },
+  });
+}
+
+export function useUpdateTrip() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      tripId,
+      payload,
+    }: {
+      tripId: number;
+      payload: UpdateTripRequest;
+    }) => tripService.updateTrip(tripId, payload),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      queryClient.invalidateQueries({ queryKey: ['trip', updated.id] });
+      toast.success(`Đã cập nhật chuyến đi "${updated.title}"`);
+    },
+    onError: (err) => {
+      toast.error(extractError(err, 'Không thể cập nhật chuyến đi.'));
+    },
+  });
+}
+
+export function useDeleteTrip() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (tripId: number) => tripService.deleteTrip(tripId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      toast.success('Đã xóa chuyến đi');
+    },
+    onError: (err) => {
+      toast.error(extractError(err, 'Không thể xóa chuyến đi.'));
     },
   });
 }

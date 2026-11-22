@@ -82,6 +82,14 @@ export interface CreateTripRequest {
   endDate: string;
 }
 
+export interface UpdateTripRequest {
+  title?: string;
+  destinationCity?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: TripStatusType;
+}
+
 export interface AddItineraryItemRequest {
   placeId?: number;
   stayId?: number;
