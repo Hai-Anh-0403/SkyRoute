@@ -15,7 +15,7 @@ import {
   PublicUser,
 } from './types/auth.types';
 
-const BCRYPT_ROUNDS = 10;
+const DEFAULT_BCRYPT_ROUNDS = 12;
 const REFRESH_TOKEN_BYTES = 48; // 96 hex chars
 
 /** Parses durations like "15m", "7d", "12h" into milliseconds. */
@@ -56,7 +56,7 @@ export class AuthService {
       );
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const passwordHash = await bcrypt.hash(dto.password, this.getBcryptRounds());
     const user = await this.users.create({
       email: dto.email,
       passwordHash,
@@ -65,6 +65,19 @@ export class AuthService {
 
     this.logger.log(`[Auth] register - userId=${user.id}`);
     return this.issueSession(user, meta);
+  }
+
+  private getBcryptRounds(): number {
+    const configured = Number(
+      this.config.get<number>('BCRYPT_ROUNDS', DEFAULT_BCRYPT_ROUNDS),
+    );
+    const nodeEnv = this.config.get<string>('NODE_ENV', 'development');
+    if (nodeEnv === 'test') {
+      return Number.isFinite(configured) && configured >= 4 ? configured : 4;
+    }
+    return Number.isFinite(configured) && configured >= 10
+      ? configured
+      : DEFAULT_BCRYPT_ROUNDS;
   }
 
   async login(dto: LoginDto, meta: ClientMeta = {}): Promise<IssuedSession> {

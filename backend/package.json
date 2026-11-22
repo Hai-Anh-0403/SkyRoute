@@ -19,7 +19,8 @@
     "typeorm": "typeorm-ts-node-commonjs -d src/core/database/data-source.ts",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
-    "seed": "ts-node src/core/database/seeds/dalat.seeder.ts"
+    "seed": "ts-node src/core/database/seeds/dalat.seeder.ts",
+    "benchmark:spatial": "ts-node src/core/database/scripts/benchmark-spatial.ts"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
