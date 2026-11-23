@@ -75,7 +75,7 @@ List responses use `meta: { page, limit, total, totalPages }`. Spatial lists add
 | `GET` | `/auth/me` | Bearer | current profile and preferences |
 | `PATCH` | `/auth/me` | Bearer | partial `{ fullName?, avatarUrl?, preferences? }` update |
 
-Registration validation: email is normalized and unique; password is validated by the auth DTO policy and never returned. User output contains `id`, `email`, `fullName`, `avatarUrl`, `preferences`, `isActive`, `createdAt`, and `updatedAt`.
+Registration validation: email is normalized and unique; password is validated by the auth DTO policy and never returned. User output contains `id`, `email`, `fullName`, `avatarUrl`, `preferences`, and `role` (`'traveler' | 'admin'`).
 
 ## Discovery feature
 
@@ -87,7 +87,7 @@ Registration validation: email is normalized and unique; password is validated b
 | `GET` | `/places/:id` | Public | one active place |
 | `POST` | `/admin/places` | Admin | create a place |
 | `PATCH` | `/admin/places/:id` | Admin | partial place update |
-| `DELETE` | `/admin/places/:id` | Admin | soft-deletes the place (`isActive=false`) |
+| `DELETE` | `/admin/places/:id` | Admin | soft-deletes the place (`isActive=false`) returning `{ id, isActive: false }` |
 
 Place create/update accepts `name`, `city`, `category`, `subcategory?`, `isOutdoor`, `hasAc?`, `suitableWeather`, `priceLevel?`, `rating?`, `address?`, `description?`, `thumbnailUrl?`, and `location`. A place response includes those fields plus `id`, `isActive`, `createdAt`, and `updatedAt`.
 
@@ -126,7 +126,16 @@ The service uses `ST_DWithin` with the functional geography GIST index and retur
 | `GET` | `/trips/:tripId/centroid-stays` | Bearer + owner | nearest stays to the trip centroid |
 | `POST` | `/admin/stays` | Admin | create a stay |
 | `PATCH` | `/admin/stays/:id` | Admin | partial stay update |
-| `DELETE` | `/admin/stays/:id` | Admin | soft-deletes the stay |
+| `DELETE` | `/admin/stays/:id` | Admin | soft-deletes the stay (`isActive=false`) returning `{ id, isActive: false }` |
+
+## Operations & health probes
+
+| Method | Path | Auth | Response / purpose |
+|---|---|---|---|
+| `GET` | `/health` | Public | Liveness probe (`200 { status: "ok", service }`) |
+| `GET` | `/health/ready` | Public | Deep readiness probe checking PostgreSQL (`SELECT 1`) and Redis (`PING`); returns `200 { status: "ready", checks }` or `503` when any dependency is down |
+
+All responses echo an `x-request-id` correlation header for request tracing.
 
 A centroid-stays response returns `tripId`, `centroidLocation`, `totalItineraryPlaces`, and `recommendedStays`. Each recommendation contains `id`, `name`, `stayType`, `pricePerNight`, `rating`, `address`, `location`, `distanceToCentroidKm`, `avgDistanceToItineraryPlacesKm`, and `amenities`.
 

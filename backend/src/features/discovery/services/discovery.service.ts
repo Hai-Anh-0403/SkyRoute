@@ -1,5 +1,7 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { DomainException } from '../../../shared/exceptions/domain.exception';
+import { assertValidWgs84 } from '../../../shared/utils/geo.util';
+import { CreatePlaceDto, UpdatePlaceDto } from '../dto/admin-place.dto';
 import { FilterPlacesDto, RadarQueryDto } from '../dto/discovery-query.dto';
 import { PlaceRepository } from '../repositories/place.repository';
 import {
@@ -9,25 +11,10 @@ import {
   RadarMeta,
 } from '../types/discovery.types';
 
+export { assertValidWgs84 };
+
 const MIN_RADAR_RADIUS_KM = 1;
 const MAX_RADAR_RADIUS_KM = 5;
-
-export function assertValidWgs84(lat: number, lng: number): void {
-  if (
-    !Number.isFinite(lat) ||
-    lat < -90 ||
-    lat > 90 ||
-    !Number.isFinite(lng) ||
-    lng < -180 ||
-    lng > 180
-  ) {
-    throw new DomainException(
-      'DISC_002',
-      'Invalid WGS84 coordinates',
-      HttpStatus.BAD_REQUEST,
-    );
-  }
-}
 
 export function parseSubcategories(raw?: string): string[] | undefined {
   if (!raw) {
@@ -168,5 +155,87 @@ export class DiscoveryService {
       order: 'asc',
     });
     return items;
+  }
+
+  async createPlace(dto: CreatePlaceDto): Promise<PlaceResponseItem> {
+    assertValidWgs84(dto.location.lat, dto.location.lng);
+    const created = await this.placeRepo.createPlace({
+      name: dto.name.trim(),
+      city: dto.city.trim(),
+      category: dto.category,
+      subcategory: dto.subcategory?.trim() ?? null,
+      isOutdoor: dto.isOutdoor,
+      hasAc: dto.hasAc ?? false,
+      suitableWeather: dto.suitableWeather,
+      priceLevel: dto.priceLevel ?? 2,
+      rating: dto.rating ?? 4.0,
+      address: dto.address?.trim() ?? null,
+      description: dto.description?.trim() ?? null,
+      thumbnailUrl: dto.thumbnailUrl?.trim() ?? null,
+      location: { lat: dto.location.lat, lng: dto.location.lng },
+    });
+    this.logger.log(`[Discovery] admin createPlace - placeId=${created.id}`);
+    return created;
+  }
+
+  async updatePlace(
+    id: string,
+    dto: UpdatePlaceDto,
+  ): Promise<PlaceResponseItem> {
+    if (dto.location) {
+      assertValidWgs84(dto.location.lat, dto.location.lng);
+    }
+
+    const updated = await this.placeRepo.updatePlace(id, {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.city !== undefined ? { city: dto.city.trim() } : {}),
+      ...(dto.category !== undefined ? { category: dto.category } : {}),
+      ...(dto.subcategory !== undefined
+        ? { subcategory: dto.subcategory.trim() }
+        : {}),
+      ...(dto.isOutdoor !== undefined ? { isOutdoor: dto.isOutdoor } : {}),
+      ...(dto.hasAc !== undefined ? { hasAc: dto.hasAc } : {}),
+      ...(dto.suitableWeather !== undefined
+        ? { suitableWeather: dto.suitableWeather }
+        : {}),
+      ...(dto.priceLevel !== undefined ? { priceLevel: dto.priceLevel } : {}),
+      ...(dto.rating !== undefined ? { rating: dto.rating } : {}),
+      ...(dto.address !== undefined ? { address: dto.address.trim() } : {}),
+      ...(dto.description !== undefined
+        ? { description: dto.description.trim() }
+        : {}),
+      ...(dto.thumbnailUrl !== undefined
+        ? { thumbnailUrl: dto.thumbnailUrl.trim() }
+        : {}),
+      ...(dto.location !== undefined
+        ? { location: { lat: dto.location.lat, lng: dto.location.lng } }
+        : {}),
+      ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+    });
+
+    if (!updated) {
+      throw new DomainException(
+        'DISC_001',
+        'Place not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    this.logger.log(`[Discovery] admin updatePlace - placeId=${id}`);
+    return updated;
+  }
+
+  async softDeletePlace(
+    id: string,
+  ): Promise<{ id: number; isActive: boolean }> {
+    const deleted = await this.placeRepo.softDeletePlace(id);
+    if (!deleted) {
+      throw new DomainException(
+        'DISC_001',
+        'Place not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    this.logger.log(`[Discovery] admin softDeletePlace - placeId=${id}`);
+    return { id: Number(id), isActive: false };
   }
 }

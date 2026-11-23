@@ -45,10 +45,11 @@ erDiagram
 | `full_name` | `VARCHAR(150)` | `NOT NULL` |
 | `avatar_url` | `TEXT` | nullable |
 | `preferences` | `JSONB` | `NOT NULL DEFAULT '{}'::jsonb` |
+| `role` | `VARCHAR(20)` | `NOT NULL DEFAULT 'traveler'`; `'traveler'` or `'admin'` |
 | `is_active` | `BOOLEAN` | `NOT NULL DEFAULT TRUE`; soft-delete/access flag |
 | `created_at`, `updated_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT CURRENT_TIMESTAMP` |
 
-Indexes: unique `uq_users_email` on `email`; `idx_users_active` on `is_active`.
+Indexes: unique `uq_users_email` on `email`; `idx_users_active` on `is_active`; `idx_users_role` on `role`.
 
 ### `refresh_tokens`
 

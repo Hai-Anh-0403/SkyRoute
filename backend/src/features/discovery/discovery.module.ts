@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminPlacesController } from './admin-places.controller';
 import { DiscoveryController } from './discovery.controller';
 import { Place } from './entities/place.entity';
 import { PlaceRepository } from './repositories/place.repository';
@@ -8,7 +9,7 @@ import { FoodDiscoveryService } from './services/food-discovery.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Place])],
-  controllers: [DiscoveryController],
+  controllers: [DiscoveryController, AdminPlacesController],
   providers: [PlaceRepository, DiscoveryService, FoodDiscoveryService],
   exports: [DiscoveryService, FoodDiscoveryService],
 })

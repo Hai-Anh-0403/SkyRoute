@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Place } from '../entities/place.entity';
 import {
+  CreatePlaceParams,
   FoodSearchParams,
   PlaceCategory,
   PlaceFilterParams,
   PlaceResponseItem,
   RadarSearchParams,
+  UpdatePlaceParams,
 } from '../types/discovery.types';
 
 interface RawPlaceRow {
@@ -159,6 +161,116 @@ export class PlaceRepository {
 
     const rows = await qb.getRawMany<RawPlaceRow>();
     return { items: rows.map((row) => this.mapRow(row)), total };
+  }
+
+  async createPlace(params: CreatePlaceParams): Promise<PlaceResponseItem> {
+    const rows = (await this.repo.manager.query(
+      `
+      INSERT INTO "places" (
+        "name", "city", "category", "subcategory", "is_outdoor", "has_ac",
+        "suitable_weather", "price_level", "rating", "address", "description",
+        "thumbnail_url", "location"
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7::varchar[], $8, $9, $10, $11,
+        $12, ST_SetSRID(ST_MakePoint($13, $14), 4326)
+      )
+      RETURNING
+        "id", "name", "city", "category", "subcategory", "is_outdoor", "has_ac",
+        "suitable_weather", "price_level", "rating", "address", "description",
+        "thumbnail_url", "is_active", "created_at", "updated_at",
+        ST_Y("location") AS lat, ST_X("location") AS lng;
+      `,
+      [
+        params.name,
+        params.city,
+        params.category,
+        params.subcategory,
+        params.isOutdoor,
+        params.hasAc,
+        params.suitableWeather,
+        params.priceLevel,
+        params.rating,
+        params.address,
+        params.description,
+        params.thumbnailUrl,
+        params.location.lng,
+        params.location.lat,
+      ],
+    )) as RawPlaceRow[];
+
+    return this.mapRow(rows[0]);
+  }
+
+  async updatePlace(
+    id: string,
+    patch: UpdatePlaceParams,
+  ): Promise<PlaceResponseItem | null> {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+
+    const addField = (column: string, val: unknown, cast = '') => {
+      if (val !== undefined) {
+        const idx = values.push(val);
+        sets.push(`"${column}" = $${idx}${cast}`);
+      }
+    };
+
+    addField('name', patch.name);
+    addField('city', patch.city);
+    addField('category', patch.category);
+    addField('subcategory', patch.subcategory);
+    addField('is_outdoor', patch.isOutdoor);
+    addField('has_ac', patch.hasAc);
+    addField('suitable_weather', patch.suitableWeather, '::varchar[]');
+    addField('price_level', patch.priceLevel);
+    addField('rating', patch.rating);
+    addField('address', patch.address);
+    addField('description', patch.description);
+    addField('thumbnail_url', patch.thumbnailUrl);
+    addField('is_active', patch.isActive);
+
+    if (patch.location) {
+      const lngIdx = values.push(patch.location.lng);
+      const latIdx = values.push(patch.location.lat);
+      sets.push(
+        `"location" = ST_SetSRID(ST_MakePoint($${lngIdx}, $${latIdx}), 4326)`,
+      );
+    }
+
+    sets.push('"updated_at" = CURRENT_TIMESTAMP');
+    const idIdx = values.push(id);
+
+    const rows = (await this.repo.manager.query(
+      `
+      UPDATE "places"
+      SET ${sets.join(', ')}
+      WHERE "id" = $${idIdx}
+      RETURNING
+        "id", "name", "city", "category", "subcategory", "is_outdoor", "has_ac",
+        "suitable_weather", "price_level", "rating", "address", "description",
+        "thumbnail_url", "is_active", "created_at", "updated_at",
+        ST_Y("location") AS lat, ST_X("location") AS lng;
+      `,
+      values,
+    )) as RawPlaceRow[];
+
+    return rows[0] ? this.mapRow(rows[0]) : null;
+  }
+
+  async softDeletePlace(id: string): Promise<boolean> {
+    const rows = (await this.repo.manager.query(
+      `
+      UPDATE "places"
+      SET "is_active" = FALSE, "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = $1 AND "is_active" = TRUE
+      RETURNING "id";
+      `,
+      [id],
+    )) as Array<{ id: string }>;
+
+    return rows.length > 0;
   }
 
   private baseSelectQuery(): SelectQueryBuilder<Place> {

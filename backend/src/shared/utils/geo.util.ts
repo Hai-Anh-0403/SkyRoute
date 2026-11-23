@@ -1,6 +1,29 @@
+import { HttpStatus } from '@nestjs/common';
+import { DomainException } from '../exceptions/domain.exception';
+
 export interface Coordinates {
   lat: number;
   lng: number;
+}
+
+/**
+ * Validates WGS84 latitude/longitude bounds and throws DISC_002 (400) if invalid.
+ */
+export function assertValidWgs84(lat: number, lng: number): void {
+  if (
+    !Number.isFinite(lat) ||
+    lat < -90 ||
+    lat > 90 ||
+    !Number.isFinite(lng) ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    throw new DomainException(
+      'DISC_002',
+      'Invalid WGS84 coordinates',
+      HttpStatus.BAD_REQUEST,
+    );
+  }
 }
 
 /**

@@ -2,11 +2,13 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { RedisService } from '../../../core/cache/redis.service';
 import { DomainException } from '../../../shared/exceptions/domain.exception';
+import { assertValidWgs84 } from '../../../shared/utils/geo.util';
 import { TripsService } from '../../trips/services/trips.service';
 import {
   TRIP_ITEMS_CHANGED_EVENT,
   TripItemsChangedEvent,
 } from '../../trips/types/trip.types';
+import { CreateStayDto, UpdateStayDto } from '../dto/admin-stay.dto';
 import { CentroidStaysQueryDto, FilterStaysDto } from '../dto/stays-query.dto';
 import { StayRepository } from '../repositories/stay.repository';
 import {
@@ -193,5 +195,70 @@ export class StaysService {
   @OnEvent(TRIP_ITEMS_CHANGED_EVENT)
   async onTripItemsChanged(event: TripItemsChangedEvent): Promise<void> {
     await this.redis.del(buildTripCentroidCacheKey(event.tripId));
+  }
+
+  async createStay(dto: CreateStayDto): Promise<StayResponseItem> {
+    assertValidWgs84(dto.location.lat, dto.location.lng);
+    const created = await this.stayRepo.createStay({
+      name: dto.name.trim(),
+      city: dto.city.trim(),
+      stayType: dto.stayType,
+      pricePerNight: dto.pricePerNight,
+      rating: dto.rating ?? 4.0,
+      address: dto.address?.trim() ?? null,
+      thumbnailUrl: dto.thumbnailUrl?.trim() ?? null,
+      amenities: dto.amenities ?? [],
+      location: { lat: dto.location.lat, lng: dto.location.lng },
+    });
+    this.logger.log(`[Stays] admin createStay - stayId=${created.id}`);
+    return created;
+  }
+
+  async updateStay(id: string, dto: UpdateStayDto): Promise<StayResponseItem> {
+    if (dto.location) {
+      assertValidWgs84(dto.location.lat, dto.location.lng);
+    }
+
+    const updated = await this.stayRepo.updateStay(id, {
+      ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+      ...(dto.city !== undefined ? { city: dto.city.trim() } : {}),
+      ...(dto.stayType !== undefined ? { stayType: dto.stayType } : {}),
+      ...(dto.pricePerNight !== undefined
+        ? { pricePerNight: dto.pricePerNight }
+        : {}),
+      ...(dto.rating !== undefined ? { rating: dto.rating } : {}),
+      ...(dto.address !== undefined ? { address: dto.address.trim() } : {}),
+      ...(dto.thumbnailUrl !== undefined
+        ? { thumbnailUrl: dto.thumbnailUrl.trim() }
+        : {}),
+      ...(dto.amenities !== undefined ? { amenities: dto.amenities } : {}),
+      ...(dto.location !== undefined
+        ? { location: { lat: dto.location.lat, lng: dto.location.lng } }
+        : {}),
+      ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+    });
+
+    if (!updated) {
+      throw new DomainException(
+        'STAY_001',
+        'Stay not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    this.logger.log(`[Stays] admin updateStay - stayId=${id}`);
+    return updated;
+  }
+
+  async softDeleteStay(id: string): Promise<{ id: number; isActive: boolean }> {
+    const deleted = await this.stayRepo.softDeleteStay(id);
+    if (!deleted) {
+      throw new DomainException(
+        'STAY_001',
+        'Stay not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    this.logger.log(`[Stays] admin softDeleteStay - stayId=${id}`);
+    return { id: Number(id), isActive: false };
   }
 }

@@ -69,6 +69,9 @@ describe('StaysService', () => {
       findActiveById: jest.fn(),
       findFiltered: jest.fn(),
       findNearestToCentroid: jest.fn(),
+      createStay: jest.fn(),
+      updateStay: jest.fn(),
+      softDeleteStay: jest.fn(),
     } as unknown as jest.Mocked<StayRepository>;
 
     tripsService = {
@@ -208,6 +211,79 @@ describe('StaysService', () => {
     it('deletes trip centroid cache key on trip.items.changed event', async () => {
       await staysService.onTripItemsChanged({ tripId: '12', affectedDays: [1] });
       expect(redis.del).toHaveBeenCalledWith('trip:centroid:12');
+    });
+  });
+
+  describe('StaysService Admin Catalog', () => {
+    it('creates a stay with defaults and validated coordinates', async () => {
+      stayRepo.createStay.mockResolvedValue({
+        id: 88,
+        name: 'Dalat Boutique',
+        city: 'Da Lat',
+        stayType: 'homestay',
+        pricePerNight: 650000,
+        rating: 4.0,
+        address: null,
+        thumbnailUrl: null,
+        location: { lat: 11.94, lng: 108.45 },
+        amenities: ['wifi'],
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const created = await staysService.createStay({
+        name: ' Dalat Boutique ',
+        city: ' Da Lat ',
+        stayType: 'homestay',
+        pricePerNight: 650000,
+        amenities: ['wifi'],
+        location: { lat: 11.94, lng: 108.45 },
+      });
+
+      expect(created.id).toBe(88);
+      expect(stayRepo.createStay).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Dalat Boutique',
+          city: 'Da Lat',
+          amenities: ['wifi'],
+        }),
+      );
+    });
+
+    it('throws DISC_002 on invalid coordinates and STAY_001 on missing update/delete target', async () => {
+      await expectDomainError(
+        staysService.createStay({
+          name: 'Bad Stay',
+          city: 'Da Lat',
+          stayType: 'hotel',
+          pricePerNight: 500000,
+          location: { lat: 11.94, lng: 200 },
+        }),
+        'DISC_002',
+        HttpStatus.BAD_REQUEST,
+      );
+
+      stayRepo.updateStay.mockResolvedValue(null);
+      await expectDomainError(
+        staysService.updateStay('999', { name: 'Renamed' }),
+        'STAY_001',
+        HttpStatus.NOT_FOUND,
+      );
+
+      stayRepo.softDeleteStay.mockResolvedValue(false);
+      await expectDomainError(
+        staysService.softDeleteStay('999'),
+        'STAY_001',
+        HttpStatus.NOT_FOUND,
+      );
+    });
+
+    it('soft-deletes an active stay and returns isActive=false', async () => {
+      stayRepo.softDeleteStay.mockResolvedValue(true);
+
+      const res = await staysService.softDeleteStay('88');
+      expect(res).toEqual({ id: 88, isActive: false });
     });
   });
 });

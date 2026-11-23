@@ -84,3 +84,36 @@ export interface FoodSearchParams {
   page: number;
   limit: number;
 }
+
+export interface CreatePlaceParams {
+  name: string;
+  city: string;
+  category: PlaceCategory;
+  subcategory: string | null;
+  isOutdoor: boolean;
+  hasAc: boolean;
+  suitableWeather: string[];
+  priceLevel: number;
+  rating: number;
+  address: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+  location: PlaceLocation;
+}
+
+export interface UpdatePlaceParams {
+  name?: string;
+  city?: string;
+  category?: PlaceCategory;
+  subcategory?: string | null;
+  isOutdoor?: boolean;
+  hasAc?: boolean;
+  suitableWeather?: string[];
+  priceLevel?: number;
+  rating?: number;
+  address?: string | null;
+  description?: string | null;
+  thumbnailUrl?: string | null;
+  location?: PlaceLocation;
+  isActive?: boolean;
+}

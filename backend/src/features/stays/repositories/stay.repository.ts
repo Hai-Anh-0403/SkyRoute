@@ -4,10 +4,12 @@ import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Stay } from '../entities/stay.entity';
 import {
   CentroidStaySearchParams,
+  CreateStayParams,
   RecommendedStayItem,
   StayFilterParams,
   StayResponseItem,
   StayType,
+  UpdateStayParams,
 } from '../types/stay.types';
 
 interface RawStayRow {
@@ -202,6 +204,108 @@ export class StayRepository {
       ),
       amenities: parseAmenities(row.amenities),
     }));
+  }
+
+  async createStay(params: CreateStayParams): Promise<StayResponseItem> {
+    const rows = (await this.repo.manager.query(
+      `
+      INSERT INTO "stays" (
+        "name", "city", "stay_type", "price_per_night", "rating",
+        "address", "thumbnail_url", "amenities", "location"
+      )
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8::jsonb, ST_SetSRID(ST_MakePoint($9, $10), 4326)
+      )
+      RETURNING
+        "id", "name", "city", "stay_type", "price_per_night", "rating",
+        "address", "thumbnail_url", "amenities", "is_active",
+        "created_at", "updated_at",
+        ST_Y("location") AS lat, ST_X("location") AS lng;
+      `,
+      [
+        params.name,
+        params.city,
+        params.stayType,
+        params.pricePerNight,
+        params.rating,
+        params.address,
+        params.thumbnailUrl,
+        JSON.stringify(params.amenities),
+        params.location.lng,
+        params.location.lat,
+      ],
+    )) as RawStayRow[];
+
+    return this.mapRow(rows[0]);
+  }
+
+  async updateStay(
+    id: string,
+    patch: UpdateStayParams,
+  ): Promise<StayResponseItem | null> {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+
+    const addField = (column: string, val: unknown, cast = '') => {
+      if (val !== undefined) {
+        const idx = values.push(val);
+        sets.push(`"${column}" = $${idx}${cast}`);
+      }
+    };
+
+    addField('name', patch.name);
+    addField('city', patch.city);
+    addField('stay_type', patch.stayType);
+    addField('price_per_night', patch.pricePerNight);
+    addField('rating', patch.rating);
+    addField('address', patch.address);
+    addField('thumbnail_url', patch.thumbnailUrl);
+    if (patch.amenities !== undefined) {
+      addField('amenities', JSON.stringify(patch.amenities), '::jsonb');
+    }
+    addField('is_active', patch.isActive);
+
+    if (patch.location) {
+      const lngIdx = values.push(patch.location.lng);
+      const latIdx = values.push(patch.location.lat);
+      sets.push(
+        `"location" = ST_SetSRID(ST_MakePoint($${lngIdx}, $${latIdx}), 4326)`,
+      );
+    }
+
+    sets.push('"updated_at" = CURRENT_TIMESTAMP');
+    const idIdx = values.push(id);
+
+    const rows = (await this.repo.manager.query(
+      `
+      UPDATE "stays"
+      SET ${sets.join(', ')}
+      WHERE "id" = $${idIdx}
+      RETURNING
+        "id", "name", "city", "stay_type", "price_per_night", "rating",
+        "address", "thumbnail_url", "amenities", "is_active",
+        "created_at", "updated_at",
+        ST_Y("location") AS lat, ST_X("location") AS lng;
+      `,
+      values,
+    )) as RawStayRow[];
+
+    return rows[0] ? this.mapRow(rows[0]) : null;
+  }
+
+  async softDeleteStay(id: string): Promise<boolean> {
+    const rows = (await this.repo.manager.query(
+      `
+      UPDATE "stays"
+      SET "is_active" = FALSE, "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = $1 AND "is_active" = TRUE
+      RETURNING "id";
+      `,
+      [id],
+    )) as Array<{ id: string }>;
+
+    return rows.length > 0;
   }
 
   private baseSelectQuery(): SelectQueryBuilder<Stay> {

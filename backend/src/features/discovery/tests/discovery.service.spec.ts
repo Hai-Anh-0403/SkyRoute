@@ -52,6 +52,9 @@ describe('DiscoveryService & FoodDiscoveryService', () => {
       findFiltered: jest.fn(),
       findInRadar: jest.fn(),
       findFoodRecommendations: jest.fn(),
+      createPlace: jest.fn(),
+      updatePlace: jest.fn(),
+      softDeletePlace: jest.fn(),
     } as unknown as jest.Mocked<PlaceRepository>;
 
     discoveryService = new DiscoveryService(placeRepo);
@@ -256,6 +259,67 @@ describe('DiscoveryService & FoodDiscoveryService', () => {
         'DISC_002',
         HttpStatus.BAD_REQUEST,
       );
+    });
+  });
+
+  describe('DiscoveryService Admin Catalog', () => {
+    it('creates a place with trimmed strings and validated coordinates', async () => {
+      const sample = makePlace({ id: 201, name: 'Hồ Tuyền Lâm', isOutdoor: true });
+      placeRepo.createPlace.mockResolvedValue(sample);
+
+      const created = await discoveryService.createPlace({
+        name: ' Hồ Tuyền Lâm ',
+        city: ' Da Lat ',
+        category: 'attraction',
+        isOutdoor: true,
+        suitableWeather: ['sunny', 'cloudy'],
+        location: { lat: 11.9012, lng: 108.4351 },
+      });
+
+      expect(created.id).toBe(201);
+      expect(placeRepo.createPlace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Hồ Tuyền Lâm',
+          city: 'Da Lat',
+          location: { lat: 11.9012, lng: 108.4351 },
+        }),
+      );
+    });
+
+    it('throws DISC_002 on invalid admin coordinates and DISC_001 on missing update/delete target', async () => {
+      await expectDomainError(
+        discoveryService.createPlace({
+          name: 'Bad Place',
+          city: 'Da Lat',
+          category: 'cafe',
+          isOutdoor: false,
+          suitableWeather: ['rainy'],
+          location: { lat: -95, lng: 108.45 },
+        }),
+        'DISC_002',
+        HttpStatus.BAD_REQUEST,
+      );
+
+      placeRepo.updatePlace.mockResolvedValue(null);
+      await expectDomainError(
+        discoveryService.updatePlace('999', { name: 'Updated' }),
+        'DISC_001',
+        HttpStatus.NOT_FOUND,
+      );
+
+      placeRepo.softDeletePlace.mockResolvedValue(false);
+      await expectDomainError(
+        discoveryService.softDeletePlace('999'),
+        'DISC_001',
+        HttpStatus.NOT_FOUND,
+      );
+    });
+
+    it('soft-deletes an active place and returns isActive=false', async () => {
+      placeRepo.softDeletePlace.mockResolvedValue(true);
+
+      const res = await discoveryService.softDeletePlace('42');
+      expect(res).toEqual({ id: 42, isActive: false });
     });
   });
 });

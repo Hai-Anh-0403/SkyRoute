@@ -62,3 +62,28 @@ export interface CentroidStaySearchParams {
   maxPrice?: number;
   limit: number;
 }
+
+export interface CreateStayParams {
+  name: string;
+  city: string;
+  stayType: StayType;
+  pricePerNight: number;
+  rating: number;
+  address: string | null;
+  thumbnailUrl: string | null;
+  amenities: string[];
+  location: StayCoordinates;
+}
+
+export interface UpdateStayParams {
+  name?: string;
+  city?: string;
+  stayType?: StayType;
+  pricePerNight?: number;
+  rating?: number;
+  address?: string | null;
+  thumbnailUrl?: string | null;
+  amenities?: string[];
+  location?: StayCoordinates;
+  isActive?: boolean;
+}
