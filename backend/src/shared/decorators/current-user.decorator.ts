@@ -1,8 +1,10 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { UserRole } from './roles.decorator';
 
 export interface AuthUserPayload {
   userId: string;
   email: string;
+  role: UserRole;
 }
 
 /** Injects the authenticated user (set by JwtStrategy) into a controller handler. */

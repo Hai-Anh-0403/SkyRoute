@@ -6,9 +6,11 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { UserRole } from '../../../shared/decorators/roles.decorator';
 
 @Entity('users')
 @Index('idx_users_active', ['isActive'])
+@Index('idx_users_role', ['role'])
 export class User {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: string;
@@ -27,6 +29,9 @@ export class User {
 
   @Column({ type: 'jsonb', default: () => "'{}'::jsonb" })
   preferences: Record<string, unknown>;
+
+  @Column({ type: 'varchar', length: 20, default: 'traveler' })
+  role: UserRole;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;

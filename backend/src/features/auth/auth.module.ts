@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
+import { RolesGuard } from '../../shared/guards/roles.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RefreshToken } from './entities/refresh-token.entity';
@@ -24,8 +25,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UserRepository,
     RefreshTokenRepository,
     JwtStrategy,
-    // Every route requires a valid access token unless marked @Public().
+    // Order matters: JwtAuthGuard populates request.user before RolesGuard checks @Roles().
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
   exports: [AuthService],
 })

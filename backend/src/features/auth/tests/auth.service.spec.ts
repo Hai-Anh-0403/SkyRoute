@@ -20,6 +20,7 @@ function buildUser(overrides: Partial<User> = {}): User {
     fullName: 'Nguyễn Văn A',
     avatarUrl: null,
     preferences: {},
+    role: 'traveler',
     isActive: true,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -95,6 +96,7 @@ describe('AuthService', () => {
       expect(await bcrypt.compare('securePassword123', created.passwordHash)).toBe(true);
       expect(session.accessToken).toBe('signed.access.token');
       expect(session.refreshToken).toHaveLength(96);
+      expect(session.user.role).toBe('traveler');
       expect(session.user).not.toHaveProperty('passwordHash');
     });
 

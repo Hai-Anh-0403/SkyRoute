@@ -152,7 +152,8 @@ export class AuthService {
   }
 
   private async issueSession(user: User, meta: ClientMeta): Promise<IssuedSession> {
-    const payload: JwtAccessPayload = { sub: user.id, email: user.email };
+    const role = user.role ?? 'traveler';
+    const payload: JwtAccessPayload = { sub: user.id, email: user.email, role };
     const accessExpiresInSec = Math.floor(
       parseDurationMs(this.config.get<string>('JWT_ACCESS_EXPIRES_IN', '15m')) /
         1000,
@@ -192,6 +193,7 @@ export class AuthService {
       fullName: user.fullName,
       avatarUrl: user.avatarUrl,
       preferences: user.preferences,
+      role: user.role ?? 'traveler',
     };
   }
 

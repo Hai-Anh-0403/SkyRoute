@@ -13,6 +13,7 @@ export interface AuthUser {
   fullName: string;
   avatarUrl: string | null;
   preferences: UserTravelPreferences;
+  role?: 'traveler' | 'admin';
 }
 
 export interface UpdateProfileRequest {
