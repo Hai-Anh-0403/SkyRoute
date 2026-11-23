@@ -1,0 +1,135 @@
+name: SkyRoute CI Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-quality:
+    name: Backend Lint, Typecheck, Unit, E2E & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run test
+      - run: npm run test:e2e
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=critical
+
+  backend-live-postgis-e2e:
+    name: Backend Live PostGIS 3.4 & Redis 7 Integration
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: skyroute
+          POSTGRES_PASSWORD: skyroute_secret
+          POSTGRES_DB: skyroute_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U skyroute -d skyroute_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      PORT: 3001
+      FRONTEND_URL: http://localhost:3000
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: skyroute
+      DB_PASSWORD: skyroute_secret
+      DB_NAME: skyroute_db
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: ci_access_secret_32chars_minimum_ok
+      JWT_REFRESH_SECRET: ci_refresh_secret_32chars_minimum_ok
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BCRYPT_ROUNDS: 4
+      WEATHER_CACHE_TTL_SEC: 1800
+      RAIN_CONFLICT_THRESHOLD_PCT: 60
+      DETOUR_WARNING_KM: 8.0
+      PLAN_B_RADIUS_METERS: 3000
+      LLM_PROVIDER: gemini
+      AI_MODEL_NAME: gemini-3.8-flash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npm run migration:run
+      - run: npm run seed
+      - run: npm run benchmark:spatial
+      - name: Run Live PostGIS & Redis E2E Suite
+        env:
+          E2E_USE_LIVE_DB: 'true'
+        run: npm run test:e2e -- live-infra.e2e-spec.ts --forceExit
+
+  frontend-quality:
+    name: Frontend Lint, Typecheck, Vitest & Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit -p tsconfig.json
+      - run: npm run test
+      - name: Next.js Production Build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:3001/api/v1
+        run: npm run build
+      - run: npm audit --omit=dev --audit-level=critical
