@@ -28,10 +28,12 @@ import { RefreshTokenRepository } from '../src/features/auth/repositories/refres
 import { UserRepository } from '../src/features/auth/repositories/user.repository';
 import { JwtStrategy } from '../src/features/auth/strategies/jwt.strategy';
 import { DiscoveryController } from '../src/features/discovery/discovery.controller';
+import { AdminPlacesController } from '../src/features/discovery/admin-places.controller';
 import { PlaceRepository } from '../src/features/discovery/repositories/place.repository';
 import { DiscoveryService } from '../src/features/discovery/services/discovery.service';
 import { FoodDiscoveryService } from '../src/features/discovery/services/food-discovery.service';
 import { PlaceResponseItem } from '../src/features/discovery/types/discovery.types';
+import { AdminStaysController } from '../src/features/stays/admin-stays.controller';
 import { StayRepository } from '../src/features/stays/repositories/stay.repository';
 import { StaysService } from '../src/features/stays/services/stays.service';
 import { StaysController } from '../src/features/stays/stays.controller';
@@ -60,6 +62,7 @@ import { WeatherService } from '../src/features/weather/services/weather.service
 import { TripWeatherController } from '../src/features/weather/trip-weather.controller';
 import { WeatherController } from '../src/features/weather/weather.controller';
 import { JwtAuthGuard } from '../src/shared/guards/jwt-auth.guard';
+import { RolesGuard } from '../src/shared/guards/roles.guard';
 
 function haversineKm(a: Coordinates, b: Coordinates): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -322,6 +325,7 @@ function createInMemoryState() {
           fullName: data.fullName,
           avatarUrl: null,
           preferences: {},
+          role: 'traveler',
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -370,12 +374,12 @@ function createInMemoryState() {
     },
     placeRepo: {
       findActiveById: async (id: string) =>
-        places.find((p) => String(p.id) === String(id)) ?? null,
+        places.find((p) => String(p.id) === String(id) && p.isActive) ?? null,
       findFiltered: async (params: { city?: string; limit: number }) => {
         const filtered = places.filter(
           (p) =>
-            !params.city ||
-            p.city.toLowerCase() === params.city.toLowerCase(),
+            p.isActive &&
+            (!params.city || p.city.toLowerCase() === params.city.toLowerCase()),
         );
         return { items: filtered.slice(0, params.limit), total: filtered.length };
       },
@@ -389,6 +393,7 @@ function createInMemoryState() {
       }) => {
         const radiusKm = params.radiusMeters / 1000;
         const matched = places
+          .filter((p) => p.isActive)
           .map((p) => ({
             ...p,
             distanceKm: haversineKm({ lat: params.lat, lng: params.lng }, p.location),
@@ -414,20 +419,77 @@ function createInMemoryState() {
       },
       findFoodRecommendations: async () => {
         const food = places.filter(
-          (p) => p.category === 'restaurant' || p.category === 'cafe',
+          (p) => p.isActive && (p.category === 'restaurant' || p.category === 'cafe'),
         );
         return { items: food, total: food.length };
+      },
+      createPlace: async (data: Record<string, unknown>) => {
+        const nextId = places.reduce((m, p) => Math.max(m, p.id), 0) + 1;
+        const created = {
+          ...(data as unknown as PlaceResponseItem),
+          id: nextId,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        places.push(created);
+        return created;
+      },
+      updatePlace: async (id: string, patch: Record<string, unknown>) => {
+        const existing = places.find((p) => String(p.id) === String(id));
+        if (!existing) return null;
+        Object.assign(existing, patch, { updatedAt: new Date() });
+        return existing;
+      },
+      softDeletePlace: async (id: string) => {
+        const existing = places.find(
+          (p) => String(p.id) === String(id) && p.isActive,
+        );
+        if (!existing) return false;
+        existing.isActive = false;
+        existing.updatedAt = new Date();
+        return true;
       },
     },
     stayRepo: {
       findActiveById: async (id: string) =>
-        stays.find((s) => String(s.id) === String(id)) ?? null,
-      findFiltered: async () => ({ items: stays, total: stays.length }),
+        stays.find((s) => String(s.id) === String(id) && s.isActive) ?? null,
+      findFiltered: async () => {
+        const active = stays.filter((s) => s.isActive);
+        return { items: active, total: active.length };
+      },
+      createStay: async (data: Record<string, unknown>) => {
+        const nextId = stays.reduce((m, s) => Math.max(m, s.id), 0) + 1;
+        const created = {
+          ...(data as unknown as StayResponseItem),
+          id: nextId,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        stays.push(created);
+        return created;
+      },
+      updateStay: async (id: string, patch: Record<string, unknown>) => {
+        const existing = stays.find((s) => String(s.id) === String(id));
+        if (!existing) return null;
+        Object.assign(existing, patch, { updatedAt: new Date() });
+        return existing;
+      },
+      softDeleteStay: async (id: string) => {
+        const existing = stays.find(
+          (s) => String(s.id) === String(id) && s.isActive,
+        );
+        if (!existing) return false;
+        existing.isActive = false;
+        existing.updatedAt = new Date();
+        return true;
+      },
       findNearestToCentroid: async (
         params: CentroidStaySearchParams,
       ): Promise<RecommendedStayItem[]> => {
         return stays
-          .filter((s) => !params.stayType || s.stayType === params.stayType)
+          .filter((s) => s.isActive && (!params.stayType || s.stayType === params.stayType))
           .map((s) => {
             const distCentroid = haversineKm(params.centroid, s.location);
             const avgPlace =
@@ -724,6 +786,7 @@ function createInMemoryState() {
       findByCityAndDate: async () => [],
     },
     redisService: {
+      ping: async () => true,
       getJson: async (key: string) => redisStore.get(key) ?? null,
       setJson: async (key: string, val: unknown) => {
         redisStore.set(key, val);
@@ -779,7 +842,9 @@ describe('SkyRoute End-to-End Integration (E2E)', () => {
         HealthController,
         AuthController,
         DiscoveryController,
+        AdminPlacesController,
         StaysController,
+        AdminStaysController,
         TripStaysController,
         TripsController,
         WeatherController,
@@ -791,6 +856,7 @@ describe('SkyRoute End-to-End Integration (E2E)', () => {
         AuthService,
         JwtStrategy,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
+        { provide: APP_GUARD, useClass: RolesGuard },
         TripOwnerGuard,
         DiscoveryService,
         FoodDiscoveryService,
@@ -805,6 +871,8 @@ describe('SkyRoute End-to-End Integration (E2E)', () => {
         {
           provide: DataSource,
           useValue: {
+            isInitialized: true,
+            query: async () => [{ '?column?': 1 }],
             transaction: async (cb: (manager: unknown) => Promise<unknown>) =>
               cb({}),
           },
@@ -865,18 +933,28 @@ describe('SkyRoute End-to-End Integration (E2E)', () => {
     await app?.close();
   });
 
-  it('exposes /api/v1/health with standard envelope & security headers', async () => {
+  it('exposes /api/v1/health and /api/v1/health/ready with correlation & security headers', async () => {
     const res = await request(app.getHttpServer())
       .get('/api/v1/health')
+      .set('x-request-id', 'e2e-health-trace-1')
       .expect(200);
 
     expect(res.body).toEqual({
       success: true,
       data: { status: 'ok', service: 'skyroute-backend' },
     });
+    expect(res.headers['x-request-id']).toBe('e2e-health-trace-1');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-frame-options']).toBe('DENY');
     expect(res.headers['x-powered-by']).toBeUndefined();
+
+    const readyRes = await request(app.getHttpServer())
+      .get('/api/v1/health/ready')
+      .expect(200);
+    expect(readyRes.headers['x-request-id']).toBeDefined();
+    expect(readyRes.body.data.status).toBe('ready');
+    expect(readyRes.body.data.checks.database.status).toBe('up');
+    expect(readyRes.body.data.checks.redis.status).toBe('up');
   });
 
   it('generates complete Swagger OpenAPI schema for all Phase 1–5 routes', () => {
@@ -1108,5 +1186,104 @@ describe('SkyRoute End-to-End Integration (E2E)', () => {
       .set('Authorization', `Bearer ${userAToken}`)
       .expect(404);
     expect(afterDelete.body.error.code).toBe('TRIP_001');
+  });
+
+  it('enforces RBAC on /admin/places and /admin/stays and hides soft-deleted catalog items', async () => {
+    const server = app.getHttpServer();
+
+    const forbiddenPlace = await request(server)
+      .post('/api/v1/admin/places')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({
+        name: 'Forbidden Place',
+        city: 'Da Lat',
+        category: 'cafe',
+        isOutdoor: false,
+        suitableWeather: ['rainy'],
+        location: { lat: 11.94, lng: 108.45 },
+      })
+      .expect(403);
+    expect(forbiddenPlace.body.error.code).toBe('AUTH_004');
+
+    const forbiddenStay = await request(server)
+      .post('/api/v1/admin/stays')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({
+        name: 'Forbidden Stay',
+        city: 'Da Lat',
+        stayType: 'hotel',
+        pricePerNight: 500000,
+        location: { lat: 11.94, lng: 108.45 },
+      })
+      .expect(403);
+    expect(forbiddenStay.body.error.code).toBe('AUTH_004');
+
+    // Promote Traveler B to admin and sign in to obtain an admin JWT claim
+    const userB = state.users.find((u) => u.email === 'userb@skyroute.vn');
+    userB!.role = 'admin';
+    const loginAdmin = await request(server)
+      .post('/api/v1/auth/login')
+      .send({ email: 'userB@skyroute.vn', password: 'securePassword123' })
+      .expect(200);
+    const adminToken = loginAdmin.body.data.accessToken as string;
+    expect(loginAdmin.body.data.user.role).toBe('admin');
+
+    const createdPlace = await request(server)
+      .post('/api/v1/admin/places')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Quán Cà Phê Túi Mơ To',
+        city: 'Da Lat',
+        category: 'cafe',
+        subcategory: 'acoustic',
+        isOutdoor: false,
+        suitableWeather: ['rainy', 'cloudy'],
+        location: { lat: 11.951, lng: 108.472 },
+      })
+      .expect(201);
+    const newPlaceId = createdPlace.body.data.id as number;
+
+    const updatedPlace = await request(server)
+      .patch(`/api/v1/admin/places/${newPlaceId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ rating: 4.9 })
+      .expect(200);
+    expect(updatedPlace.body.data.rating).toBe(4.9);
+
+    const deletedPlace = await request(server)
+      .delete(`/api/v1/admin/places/${newPlaceId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(deletedPlace.body.data).toEqual({ id: newPlaceId, isActive: false });
+
+    await request(server).get(`/api/v1/places/${newPlaceId}`).expect(404);
+
+    const createdStay = await request(server)
+      .post('/api/v1/admin/stays')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Terracotta Villa Da Lat',
+        city: 'Da Lat',
+        stayType: 'resort',
+        pricePerNight: 1650000,
+        amenities: ['wifi', 'breakfast'],
+        location: { lat: 11.901, lng: 108.431 },
+      })
+      .expect(201);
+    const newStayId = createdStay.body.data.id as number;
+
+    const updatedStay = await request(server)
+      .patch(`/api/v1/admin/stays/${newStayId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pricePerNight: 1550000 })
+      .expect(200);
+    expect(updatedStay.body.data.pricePerNight).toBe(1550000);
+
+    await request(server)
+      .delete(`/api/v1/admin/stays/${newStayId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    await request(server).get(`/api/v1/stays/${newStayId}`).expect(404);
   });
 });

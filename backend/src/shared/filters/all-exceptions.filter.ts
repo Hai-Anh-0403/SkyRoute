@@ -7,6 +7,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { getRequestId } from '../../core/logger/request-context';
+import { formatStructuredLog } from '../../core/logger/structured-logger.service';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -36,7 +38,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
         }
       }
     } else if (exception instanceof Error) {
-      this.logger.error(exception.message, exception.stack);
+      this.logger.error(
+        formatStructuredLog({
+          level: 'error',
+          event: 'http.unhandled_exception',
+          requestId: getRequestId(),
+          outcome: 'error',
+          errorName: exception.name,
+          message: exception.message,
+        }),
+        exception.stack,
+      );
     }
 
     response.status(status).json({

@@ -2,7 +2,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
 import { NextFunction, Request, Response } from 'express';
+import { requestCorrelationMiddleware } from './core/logger/request-context';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
+import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 
 /**
@@ -34,6 +36,7 @@ export function configureApp(app: INestApplication): void {
     next();
   });
 
+  app.use(requestCorrelationMiddleware);
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
   app.enableCors({
@@ -48,7 +51,10 @@ export function configureApp(app: INestApplication): void {
       transform: true,
     }),
   );
-  app.useGlobalInterceptors(new TransformInterceptor());
+  app.useGlobalInterceptors(
+    new LoggingInterceptor(),
+    new TransformInterceptor(),
+  );
   app.useGlobalFilters(new AllExceptionsFilter());
 }
 
@@ -67,6 +73,7 @@ export function createSwaggerDocument(app: INestApplication): OpenAPIObject {
     .addTag('Trips', 'Trip management and 4-slot drag-and-drop timeline')
     .addTag('Weather', 'Open-Meteo hourly forecast sync and rain conflicts')
     .addTag('AI Copilot', 'Grounded tool calling, Plan B swap, and itinerary generator')
+    .addTag('Admin Catalog', 'Protected catalog management for places and stays')
     .build();
 
   return SwaggerModule.createDocument(app, swaggerConfig);

@@ -31,6 +31,8 @@ describeLive('SkyRoute Live PostGIS + Redis 7 E2E', () => {
   let accessToken = '';
   let userId = '';
   let tripId = 0;
+  const createdAdminPlaceIds: number[] = [];
+  const createdAdminStayIds: number[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -53,8 +55,20 @@ describeLive('SkyRoute Live PostGIS + Redis 7 E2E', () => {
           .set('Authorization', `Bearer ${accessToken}`);
         await redisService.del(`trip:centroid:${tripId}`);
       }
-      if (userId && dataSource?.isInitialized) {
-        await dataSource.query('DELETE FROM users WHERE id = $1', [userId]);
+      if (dataSource?.isInitialized) {
+        if (createdAdminPlaceIds.length > 0) {
+          await dataSource.query('DELETE FROM places WHERE id = ANY($1)', [
+            createdAdminPlaceIds,
+          ]);
+        }
+        if (createdAdminStayIds.length > 0) {
+          await dataSource.query('DELETE FROM stays WHERE id = ANY($1)', [
+            createdAdminStayIds,
+          ]);
+        }
+        if (userId) {
+          await dataSource.query('DELETE FROM users WHERE id = $1', [userId]);
+        }
       }
     } finally {
       if (app) {
@@ -286,5 +300,94 @@ describeLive('SkyRoute Live PostGIS + Redis 7 E2E', () => {
       expect(weatherTtl).toBeGreaterThan(0);
       expect(weatherTtl).toBeLessThanOrEqual(1800);
     }
+
+    // 8. Live readiness probe, x-request-id correlation, and RBAC /admin/* catalog CRUD
+    const readyRes = await request(server)
+      .get('/api/v1/health/ready')
+      .set('x-request-id', 'live-infra-trace-001')
+      .expect(200);
+    expect(readyRes.headers['x-request-id']).toBe('live-infra-trace-001');
+    expect(readyRes.body.data.status).toBe('ready');
+    expect(readyRes.body.data.checks.database.status).toBe('up');
+    expect(readyRes.body.data.checks.redis.status).toBe('up');
+
+    await request(server)
+      .post('/api/v1/admin/places')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        name: 'Traveler Forbidden Place',
+        city: 'Da Lat',
+        category: 'cafe',
+        isOutdoor: false,
+        suitableWeather: ['rainy'],
+        location: { lat: 11.94, lng: 108.45 },
+      })
+      .expect(403);
+
+    await dataSource.query("UPDATE users SET role = 'admin' WHERE id = $1", [
+      userId,
+    ]);
+    const adminLoginRes = await request(server)
+      .post('/api/v1/auth/login')
+      .send({ email: uniqueEmail, password: 'LiveE2EPassword123!' })
+      .expect(200);
+    const adminToken = adminLoginRes.body.data.accessToken as string;
+    expect(adminLoginRes.body.data.user.role).toBe('admin');
+
+    const adminPlaceRes = await request(server)
+      .post('/api/v1/admin/places')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Live Admin Smoke Place',
+        city: 'Da Lat',
+        category: 'cafe',
+        isOutdoor: false,
+        suitableWeather: ['rainy', 'cloudy'],
+        location: { lat: 11.9425, lng: 108.4495 },
+      })
+      .expect(201);
+    const adminPlaceId = adminPlaceRes.body.data.id as number;
+    createdAdminPlaceIds.push(adminPlaceId);
+
+    await request(server)
+      .patch(`/api/v1/admin/places/${adminPlaceId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ rating: 4.9 })
+      .expect(200);
+
+    await request(server)
+      .delete(`/api/v1/admin/places/${adminPlaceId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    await request(server).get(`/api/v1/places/${adminPlaceId}`).expect(404);
+
+    const adminStayRes = await request(server)
+      .post('/api/v1/admin/stays')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Live Admin Smoke Stay',
+        city: 'Da Lat',
+        stayType: 'homestay',
+        pricePerNight: 750000,
+        amenities: ['wifi', 'heater'],
+        location: { lat: 11.9412, lng: 108.4512 },
+      })
+      .expect(201);
+    const adminStayId = adminStayRes.body.data.id as number;
+    createdAdminStayIds.push(adminStayId);
+
+    await request(server)
+      .patch(`/api/v1/admin/stays/${adminStayId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pricePerNight: 790000 })
+      .expect(200);
+
+    await request(server)
+      .delete(`/api/v1/admin/stays/${adminStayId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    await request(server).get(`/api/v1/stays/${adminStayId}`).expect(404);
   }, 45_000);
 });
