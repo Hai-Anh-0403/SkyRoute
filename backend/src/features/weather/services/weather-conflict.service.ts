@@ -128,7 +128,7 @@ export class WeatherConflictService {
         continue;
       }
 
-      let temperatureC = slotData?.temperatureC ?? 18.0;
+      const temperatureC = slotData?.temperatureC ?? 18.0;
       let rainProbability = slotData?.rainProbability ?? 0;
       let weatherCondition = slotData?.conditionTag ?? 'cloudy';
 

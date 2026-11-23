@@ -124,10 +124,10 @@ export class StaysService {
     const cacheKey = buildTripCentroidCacheKey(tripId);
     const cached = await this.redis.getJson<CachedTripCentroid>(cacheKey);
 
-    let centroidLocation: StayCoordinates | null = null;
-    let totalItineraryPlaces = 0;
-    let destinationCity = '';
-    let placeLocations: StayCoordinates[] = [];
+    let centroidLocation: StayCoordinates | null;
+    let totalItineraryPlaces: number;
+    let destinationCity: string;
+    let placeLocations: StayCoordinates[];
 
     if (
       cached &&
