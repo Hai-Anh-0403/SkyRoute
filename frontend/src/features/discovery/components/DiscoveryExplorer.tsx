@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { PublicStaysPanel } from '@/features/stay-finder';
+import { SKYROUTE_CITIES, resolveCityPreset } from '@/shared/lib/cities';
 import { ROUTES } from '@/shared/lib/routes';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
 import { useRadarPlaces } from '../hooks/useRadarPlaces';
@@ -22,17 +24,18 @@ interface DiscoveryExplorerProps {
   onSelectPlace?: (place: PlaceItem) => void;
 }
 
-const DEFAULT_DALAT_CENTER = { lat: 11.9404, lng: 108.4583 };
-
 export function DiscoveryExplorer({
   initialCity,
   onSelectPlace,
 }: DiscoveryExplorerProps) {
+  const router = useRouter();
+  const cityPreset = resolveCityPreset(initialCity);
+
   const [activeTab, setActiveTab] = useState<'radar' | 'food' | 'stays'>(
     'radar',
   );
   const [filters, setFilters] = useState<DiscoveryFilters>({
-    city: initialCity,
+    city: cityPreset.canonicalName,
   });
   const [foodPresetId, setFoodPresetId] =
     useState<WeatherFoodPresetId>('cold_rainy');
@@ -44,12 +47,11 @@ export function DiscoveryExplorer({
   const setHoveredPlaceId = useWorkspaceStore((s) => s.setHoveredPlaceId);
 
   useEffect(() => {
-    if (!radarAnchorCoords) {
-      setRadarAnchorCoords(DEFAULT_DALAT_CENTER);
-    }
-  }, [radarAnchorCoords, setRadarAnchorCoords]);
+    setFilters((prev) => ({ ...prev, city: cityPreset.canonicalName }));
+    setRadarAnchorCoords(cityPreset.center);
+  }, [cityPreset.canonicalName, cityPreset.center, setRadarAnchorCoords]);
 
-  const anchor = radarAnchorCoords ?? DEFAULT_DALAT_CENTER;
+  const anchor = radarAnchorCoords ?? cityPreset.center;
   const activeFoodPreset =
     WEATHER_FOOD_PRESETS.find((p) => p.id === foodPresetId) ??
     WEATHER_FOOD_PRESETS[0];
@@ -86,14 +88,26 @@ export function DiscoveryExplorer({
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Link href={ROUTES.HOME} className="text-lg font-bold text-sky-600">
             SkyRoute
           </Link>
           <span className="text-sm text-slate-500">
-            Khám phá Radar • {initialCity}
+            Khám phá Radar • {cityPreset.displayName}
           </span>
+          <select
+            aria-label="Chọn điểm đến"
+            value={cityPreset.slug}
+            onChange={(e) => router.push(ROUTES.EXPLORE_CITY(e.target.value))}
+            className="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-400"
+          >
+            {SKYROUTE_CITIES.map((city) => (
+              <option key={city.slug} value={city.slug}>
+                {city.displayName} ({city.region})
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-3 text-sm">
           <Link
@@ -151,7 +165,10 @@ export function DiscoveryExplorer({
 
           {activeTab === 'radar' && (
             <>
-              <ProximityRadarControl totalFound={radarQuery.data?.meta?.total} />
+              <ProximityRadarControl
+                city={cityPreset.canonicalName}
+                totalFound={radarQuery.data?.meta?.total}
+              />
               <MultiLayerFilterBar filters={filters} onChange={setFilters} />
 
               <div className="flex-1 space-y-2 overflow-y-auto pr-1 lg:max-h-[calc(100vh-350px)]">

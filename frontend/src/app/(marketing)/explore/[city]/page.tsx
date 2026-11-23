@@ -1,15 +1,6 @@
 import type { Metadata } from 'next';
 import { DiscoveryExplorer } from '@/features/discovery';
-
-const CITY_SLUG_MAP: Record<string, string> = {
-  'da-lat': 'Da Lat',
-  'da-nang': 'Da Nang',
-};
-
-function resolveCityName(slug: string): string {
-  const normalized = decodeURIComponent(slug).toLowerCase();
-  return CITY_SLUG_MAP[normalized] ?? decodeURIComponent(slug);
-}
+import { resolveCityPreset } from '@/shared/lib/cities';
 
 export async function generateMetadata({
   params,
@@ -17,10 +8,10 @@ export async function generateMetadata({
   params: Promise<{ city: string }>;
 }): Promise<Metadata> {
   const { city } = await params;
-  const cityName = resolveCityName(city);
+  const preset = resolveCityPreset(city);
   return {
-    title: `Khám phá ${cityName} | SkyRoute Radar`,
-    description: `Quét Radar lân cận 1km–5km các điểm tham quan, ẩm thực và cà phê tại ${cityName}.`,
+    title: `Khám phá ${preset.displayName} | SkyRoute Radar`,
+    description: `Quét Radar lân cận 1km–5km các điểm tham quan, ẩm thực và cà phê tại ${preset.displayName}.`,
   };
 }
 
@@ -30,5 +21,6 @@ export default async function ExploreCityPage({
   params: Promise<{ city: string }>;
 }) {
   const { city } = await params;
-  return <DiscoveryExplorer initialCity={resolveCityName(city)} />;
+  const preset = resolveCityPreset(city);
+  return <DiscoveryExplorer initialCity={preset.canonicalName} />;
 }

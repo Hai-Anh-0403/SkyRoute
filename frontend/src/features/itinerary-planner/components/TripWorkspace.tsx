@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AiPromptModal } from '@/features/ai-copilot';
 import {
   InteractiveMap,
@@ -23,6 +23,7 @@ import {
   usePlanBCandidates,
   useSyncTripWeather,
 } from '@/features/weather-fallback';
+import { resolveCityPreset } from '@/shared/lib/cities';
 import { ROUTES } from '@/shared/lib/routes';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
 import type { MapPlanBPreview, TimeSlotType } from '@/shared/types/geo.types';
@@ -40,8 +41,6 @@ interface TripWorkspaceProps {
   tripId: number;
 }
 
-const DEFAULT_DALAT_CENTER = { lat: 11.9404, lng: 108.4583 };
-
 export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const [panelTab, setPanelTab] = useState<'timeline' | 'radar'>('timeline');
   const [radarSubMode, setRadarSubMode] = useState<'radar' | 'food'>('radar');
@@ -52,6 +51,7 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const activeDayNumber = useWorkspaceStore((s) => s.activeDayNumber);
   const setActiveDayNumber = useWorkspaceStore((s) => s.setActiveDayNumber);
   const radarAnchorCoords = useWorkspaceStore((s) => s.radarAnchorCoords);
+  const setRadarAnchorCoords = useWorkspaceStore((s) => s.setRadarAnchorCoords);
   const radarRadiusKm = useWorkspaceStore((s) => s.radarRadiusKm);
   const activePlanBItemId = useWorkspaceStore((s) => s.activePlanBItemId);
   const isCentroidStayDrawerOpen = useWorkspaceStore(
@@ -72,13 +72,24 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const planBCandidatesQuery = usePlanBCandidates(tripId, activePlanBItemId);
 
   const trip = tripQuery.data;
+  const cityCenter = useMemo(
+    () => resolveCityPreset(trip?.destinationCity).center,
+    [trip?.destinationCity],
+  );
+
+  useEffect(() => {
+    if (trip?.destinationCity) {
+      setRadarAnchorCoords(cityCenter);
+    }
+  }, [trip?.destinationCity, cityCenter, setRadarAnchorCoords]);
+
   const hasCentroid = Boolean(trip?.centroidLocation);
   const centroidStaysQuery = useCentroidStays(
     tripId,
     isCentroidStayDrawerOpen || hasCentroid,
   );
 
-  const anchor = radarAnchorCoords ?? DEFAULT_DALAT_CENTER;
+  const anchor = radarAnchorCoords ?? cityCenter;
   const radarQuery = useRadarPlaces(
     panelTab === 'radar'
       ? {
@@ -303,6 +314,7 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
                 ) : (
                   <>
                     <ProximityRadarControl
+                      city={trip.destinationCity}
                       totalFound={radarQuery.data?.meta?.total}
                     />
                     <MultiLayerFilterBar

@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { ProfilePreferencesModal } from '@/features/auth';
+import { SKYROUTE_CITIES } from '@/shared/lib/cities';
 import { ROUTES } from '@/shared/lib/routes';
 import {
   useCreateTrip,
@@ -136,12 +137,17 @@ export function TripsDashboard() {
             >
               Điểm đến
             </label>
-            <input
+            <select
               id="trip-city"
-              type="text"
               {...register('destinationCity')}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            />
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              {SKYROUTE_CITIES.map((city) => (
+                <option key={city.slug} value={city.canonicalName}>
+                  {city.displayName} ({city.region})
+                </option>
+              ))}
+            </select>
             {errors.destinationCity && (
               <p className="mt-1 text-xs text-rose-600">
                 {errors.destinationCity.message}

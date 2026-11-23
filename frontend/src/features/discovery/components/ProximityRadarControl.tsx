@@ -1,23 +1,25 @@
 'use client';
 
 import { LocateFixed, Radar } from 'lucide-react';
+import { resolveCityPreset } from '@/shared/lib/cities';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
 
 interface ProximityRadarControlProps {
   totalFound?: number;
+  city?: string;
 }
-
-const DEFAULT_DALAT_ANCHOR = { lat: 11.9404, lng: 108.4583 };
 
 export function ProximityRadarControl({
   totalFound,
+  city = 'Da Lat',
 }: ProximityRadarControlProps) {
   const radarRadiusKm = useWorkspaceStore((s) => s.radarRadiusKm);
   const radarAnchorCoords = useWorkspaceStore((s) => s.radarAnchorCoords);
   const setRadarRadiusKm = useWorkspaceStore((s) => s.setRadarRadiusKm);
   const setRadarAnchorCoords = useWorkspaceStore((s) => s.setRadarAnchorCoords);
 
-  const anchor = radarAnchorCoords ?? DEFAULT_DALAT_ANCHOR;
+  const cityPreset = resolveCityPreset(city);
+  const anchor = radarAnchorCoords ?? cityPreset.center;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
@@ -32,11 +34,11 @@ export function ProximityRadarControl({
 
         <button
           type="button"
-          onClick={() => setRadarAnchorCoords(DEFAULT_DALAT_ANCHOR)}
+          onClick={() => setRadarAnchorCoords(cityPreset.center)}
           className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
         >
           <LocateFixed className="h-3.5 w-3.5" />
-          Đặt lại tâm Đà Lạt
+          Đặt lại tâm {cityPreset.displayName.split(' (')[0]}
         </button>
       </div>
 
