@@ -20,6 +20,7 @@
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
     "seed": "ts-node src/core/database/seeds/dalat.seeder.ts",
+    "seed:north": "ts-node src/core/database/seeds/north-vietnam.seeder.ts",
     "benchmark:spatial": "ts-node src/core/database/scripts/benchmark-spatial.ts"
   },
   "dependencies": {

@@ -98,10 +98,14 @@ try {
     }
 
     if ($Reseed -or $placeCount -eq 0) {
-        Write-Host "Dang nap du lieu mau Da Lat (places hien tai: $placeCount)..." -ForegroundColor Yellow
+        Write-Host "Dang nap du lieu mau Da Lat va cac tinh Mien Bac (places hien tai: $placeCount)..." -ForegroundColor Yellow
         npm --prefix backend run seed
         if ($LASTEXITCODE -ne 0) {
-            throw 'Seed du lieu that bai.'
+            throw 'Seed Da Lat that bai.'
+        }
+        npm --prefix backend run seed:north
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Seed Mien Bac that bai.'
         }
     } else {
         Write-Host "Da co $placeCount dia diem trong DB — bo qua seed de giu nguyen lich trinh (dung -Reseed de nap lai)." -ForegroundColor DarkGray
