@@ -39,5 +39,5 @@ Thumbs.db
 
 # Local taste-skill kit & headless Chrome verification artifacts
 taste-skill/
-.taste-skill/chrome-*/
-.taste-skill/shots/
+**/.taste-skill/chrome-*/
+**/.taste-skill/shots/
