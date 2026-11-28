@@ -30,6 +30,7 @@ const AUTH_SKIP_REFRESH_PATHS = [
 let requestInterceptorId: number | null = null;
 let responseInterceptorId: number | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+let activeHandlers: AuthInterceptorHandlers | null = null;
 
 function shouldSkipRefresh(url: string | undefined): boolean {
   if (!url) {
@@ -38,9 +39,31 @@ function shouldSkipRefresh(url: string | undefined): boolean {
   return AUTH_SKIP_REFRESH_PATHS.some((path) => url.includes(path));
 }
 
+/**
+ * Deduplicated session refresh using the HttpOnly refresh cookie.
+ * Shared by both initial AuthBootstrap hydration and 401 retry interceptors
+ * so concurrent callers never trigger duplicate refresh-token rotations.
+ */
+export function refreshAuthSession(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = apiClient
+      .post<ApiResponse<{ user: unknown; accessToken: string }>>('/auth/refresh')
+      .then((res) => {
+        const payload = res.data.data;
+        activeHandlers?.onTokenRefreshed(payload);
+        return payload.accessToken;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
 export function configureAuthInterceptors(
   handlers: AuthInterceptorHandlers,
 ): void {
+  activeHandlers = handlers;
   if (requestInterceptorId !== null) {
     apiClient.interceptors.request.eject(requestInterceptorId);
   }
@@ -77,22 +100,7 @@ export function configureAuthInterceptors(
       originalRequest._retry = true;
 
       try {
-        if (!refreshPromise) {
-          refreshPromise = apiClient
-            .post<ApiResponse<{ user: unknown; accessToken: string }>>(
-              '/auth/refresh',
-            )
-            .then((res) => {
-              const payload = res.data.data;
-              handlers.onTokenRefreshed(payload);
-              return payload.accessToken;
-            })
-            .finally(() => {
-              refreshPromise = null;
-            });
-        }
-
-        const newAccessToken = await refreshPromise;
+        const newAccessToken = await refreshAuthSession();
         if (!newAccessToken) {
           handlers.onAuthFailed();
           return Promise.reject(error);

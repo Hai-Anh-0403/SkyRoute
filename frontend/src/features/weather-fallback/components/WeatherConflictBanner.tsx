@@ -30,7 +30,7 @@ export function WeatherConflictBanner({
         className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-rose-700"
       >
         <Sparkles className="h-3 w-3" />
-        Tìm Kế hoạch B (Indoor)
+        Tìm Kế hoạch dự phòng (Indoor)
       </button>
     </div>
   );

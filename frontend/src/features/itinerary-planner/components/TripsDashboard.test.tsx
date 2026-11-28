@@ -14,10 +14,26 @@ import { TripsDashboard } from './TripsDashboard';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => '/trips',
 }));
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('next/image', () => ({
+  default: ({
+    alt,
+    src,
+    className,
+  }: {
+    alt: string;
+    src: string;
+    className?: string;
+  }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img alt={alt} src={src} className={className} />
+  ),
 }));
 
 function renderWithQuery(ui: ReactNode) {
@@ -84,5 +100,23 @@ describe('TripsDashboard', () => {
     await waitFor(() => {
       expect(deleteSpy).toHaveBeenCalledWith(12);
     });
+  });
+
+  it('opens create trip modal prefilled when selecting a curated template', async () => {
+    vi.spyOn(tripService, 'listTrips').mockResolvedValue([]);
+
+    renderWithQuery(<TripsDashboard />);
+
+    expect(
+      await screen.findByText(/Bạn chưa có chuyến đi nào/i),
+    ).toBeInTheDocument();
+
+    const useButtons = screen.getAllByRole('button', { name: /\+ Dùng mẫu/i });
+    fireEvent.click(useButtons[0]);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue('Đà Lạt 3N2Đ Chữa lành'),
+    ).toBeInTheDocument();
   });
 });

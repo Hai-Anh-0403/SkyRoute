@@ -31,4 +31,12 @@ export class PlanBSwapRepository {
       order: { createdAt: 'DESC' },
     });
   }
+
+  findByTripWithDetails(tripId: string): Promise<PlanBSwap[]> {
+    return this.repo.find({
+      where: { tripId },
+      relations: ['originalPlace', 'replacementPlace', 'itineraryItem'],
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

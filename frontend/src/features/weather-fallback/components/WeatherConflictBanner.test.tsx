@@ -23,7 +23,7 @@ describe('WeatherConflictBanner', () => {
     );
 
     fireEvent.click(
-      screen.getByRole('button', { name: /Tìm Kế hoạch B/i }),
+      screen.getByRole('button', { name: /Tìm Kế hoạch dự phòng/i }),
     );
     expect(onOpenPlanB).toHaveBeenCalledWith(103);
   });

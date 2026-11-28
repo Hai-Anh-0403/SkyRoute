@@ -99,7 +99,7 @@ describe('PlanBSwapDrawer', () => {
     await waitFor(() => {
       expect(swapSpy).toHaveBeenCalledWith(12, 103, {
         replacementPlaceId: 88,
-        note: 'Hoán đổi Kế hoạch B tránh mưa 75%',
+        note: 'Hoán đổi Kế hoạch dự phòng tránh mưa 75%',
       });
       expect(useWorkspaceStore.getState().activePlanBItemId).toBeNull();
     });

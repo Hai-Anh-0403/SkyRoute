@@ -1,1 +1,130 @@
 @import "tailwindcss";
+
+:root {
+  /* Taste-skill dealt palette: mint-pink-accounts (light neutral + botanical green accent, zero violet) */
+  --p-bg: #f8f8f8;
+  --p-surface: #eeeeee;
+  --p-ink: #0a0a0a;
+  --p-muted: #6a6a6a;
+  --p-accent: #1f6b3a;
+  --p-accent-ink: #ffffff;
+  --p-action: #1f6b3a;
+  --p-action-ink: #ffffff;
+
+  --p-inv-bg: #0a0a0a;
+  --p-inv-surface: #171717;
+  --p-inv-ink: #f8f8f8;
+  --p-inv-muted: #939393;
+  --p-inv-accent: #1f6b3a;
+  --p-inv-accent-ink: #ffffff;
+  --p-inv-action: #1f6b3a;
+  --p-inv-action-ink: #ffffff;
+
+  /* Taste-skill dealt typography: host (Host Grotesk + JetBrains Mono, Be Vietnam Pro fallback for Vietnamese) */
+  --font-display: var(--font-host), var(--font-vietnam), "Host Grotesk", system-ui, sans-serif;
+  --font-text: var(--font-host), var(--font-vietnam), "Host Grotesk", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display-weight: 500;
+  --display-tracking: -0.035em;
+  --display-tracking-xl: -0.04em;
+
+  /* Taste-skill soft radius & motion tokens */
+  --sr-hairline: rgb(10 10 10 / 0.12);
+  --sr-hairline-strong: rgb(10 10 10 / 0.22);
+  --sr-r-sm: 8px;
+  --sr-r-md: 12px;
+  --sr-r-lg: 20px;
+  --sr-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sr-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@theme inline {
+  --font-sans: var(--font-host), var(--font-vietnam), "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-editorial: var(--font-host), var(--font-vietnam), "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+  --color-sr-bg: #f8f8f8;
+  --color-sr-surface: #eeeeee;
+  --color-sr-ink: #0a0a0a;
+  --color-sr-muted: #6a6a6a;
+  --color-sr-accent: #1f6b3a;
+  --color-sr-accent-hover: #17542d;
+  --color-sr-accent-soft: #e6f2ea;
+}
+
+/* Global taste-skill focus ring & tactile micro-interactions for Workspace */
+.sr-card-interactive {
+  transition:
+    transform 180ms var(--sr-ease),
+    border-color 180ms var(--sr-ease),
+    box-shadow 180ms var(--sr-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sr-card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: var(--sr-hairline-strong);
+    box-shadow: 0 12px 24px -12px rgb(10 10 10 / 0.1);
+  }
+}
+
+.sr-btn-primary {
+  background-color: var(--p-action);
+  color: var(--p-action-ink);
+  transition:
+    background-color 150ms var(--sr-ease),
+    transform 150ms var(--sr-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sr-btn-primary:hover:not(:disabled) {
+    background-color: #17542d;
+    transform: translateY(-1px);
+  }
+}
+
+.sr-btn-primary:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+}
+
+.sr-btn-tonal {
+  background-color: var(--p-surface);
+  color: var(--p-ink);
+  border: 1px solid var(--sr-hairline);
+  transition:
+    background-color 150ms var(--sr-ease),
+    border-color 150ms var(--sr-ease),
+    transform 150ms var(--sr-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sr-btn-tonal:hover:not(:disabled) {
+    background-color: #e4e4e4;
+    border-color: var(--sr-hairline-strong);
+    transform: translateY(-1px);
+  }
+}
+
+.sr-btn-tonal:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-card-interactive,
+  .sr-btn-primary,
+  .sr-btn-tonal {
+    transition-property: background-color, border-color, color, opacity;
+  }
+  .sr-card-interactive:hover,
+  .sr-btn-primary:hover,
+  .sr-btn-primary:active,
+  .sr-btn-tonal:hover,
+  .sr-btn-tonal:active {
+    transform: none;
+  }
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+}

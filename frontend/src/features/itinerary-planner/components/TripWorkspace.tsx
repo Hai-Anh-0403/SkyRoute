@@ -19,6 +19,7 @@ import {
   useCentroidStays,
 } from '@/features/stay-finder';
 import {
+  PlanBHistoryDrawer,
   PlanBSwapDrawer,
   usePlanBCandidates,
   useSyncTripWeather,
@@ -34,7 +35,9 @@ import {
   useTripDetail,
 } from '../hooks/useTripQueries';
 import { buildDailyRouteSegments, sortDayItems } from '../utils/route.utils';
+import { PrintableItinerary } from './PrintableItinerary';
 import { TimelineBoard } from './TimelineBoard';
+import { TripBudgetSummary } from './TripBudgetSummary';
 import { TripWorkspaceHeader } from './TripWorkspaceHeader';
 
 interface TripWorkspaceProps {
@@ -47,6 +50,7 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
   const [targetSlot, setTargetSlot] = useState<TimeSlotType>('morning');
   const [filters, setFilters] = useState<DiscoveryFilters>({ city: 'Da Lat' });
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isPlanBHistoryOpen, setIsPlanBHistoryOpen] = useState(false);
 
   const activeDayNumber = useWorkspaceStore((s) => s.activeDayNumber);
   const setActiveDayNumber = useWorkspaceStore((s) => s.setActiveDayNumber);
@@ -208,32 +212,37 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
     centroidStaysQuery.data?.centroidLocation ?? trip.centroidLocation;
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <TripWorkspaceHeader
-        title={trip.title}
-        destinationCity={trip.destinationCity}
-        startDate={trip.startDate}
-        endDate={trip.endDate}
-        totalDays={trip.totalDays}
-        activeDayNumber={activeDayNumber}
-        isWeatherSyncing={syncWeatherMutation.isPending}
-        isCentroidOpen={isCentroidStayDrawerOpen}
-        onSelectDay={setActiveDayNumber}
-        onSyncWeather={() => syncWeatherMutation.mutate(undefined)}
-        onSimulateRain={() =>
-          syncWeatherMutation.mutate({
-            dayNumber: activeDayNumber,
-            timeSlot: 'afternoon',
-            rainProbability: 75,
-          })
-        }
-        onToggleCentroidDrawer={handleToggleCentroidDrawer}
-        onOpenAiModal={() => setIsAiModalOpen(true)}
-      />
+    <>
+      <PrintableItinerary trip={trip} />
+      <div className="flex min-h-screen flex-col bg-[#FAFAF9] print:hidden">
+        <TripWorkspaceHeader
+          title={trip.title}
+          destinationCity={trip.destinationCity}
+          startDate={trip.startDate}
+          endDate={trip.endDate}
+          totalDays={trip.totalDays}
+          activeDayNumber={activeDayNumber}
+          isWeatherSyncing={syncWeatherMutation.isPending}
+          isCentroidOpen={isCentroidStayDrawerOpen}
+          onSelectDay={setActiveDayNumber}
+          onSyncWeather={() => syncWeatherMutation.mutate(undefined)}
+          onSimulateRain={() =>
+            syncWeatherMutation.mutate({
+              dayNumber: activeDayNumber,
+              timeSlot: 'afternoon',
+              rainProbability: 75,
+            })
+          }
+          onToggleCentroidDrawer={handleToggleCentroidDrawer}
+          onOpenAiModal={() => setIsAiModalOpen(true)}
+          onOpenPlanBHistory={() => setIsPlanBHistoryOpen(true)}
+          onPrintItinerary={() => window.print()}
+        />
 
-      <div className="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-12">
-        <aside className="flex flex-col gap-3 lg:col-span-5">
-          <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-white p-1">
+        <div className="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-12">
+          <aside className="flex flex-col gap-3 lg:col-span-5">
+            <TripBudgetSummary items={trip.items} totalDays={trip.totalDays} />
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-stone-200 bg-white p-1">
             <button
               type="button"
               onClick={() => setPanelTab('timeline')}
@@ -381,6 +390,11 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
       </div>
 
       <PlanBSwapDrawer tripId={tripId} />
+      <PlanBHistoryDrawer
+        tripId={tripId}
+        isOpen={isPlanBHistoryOpen}
+        onClose={() => setIsPlanBHistoryOpen(false)}
+      />
       <CentroidStayDrawer
         tripId={tripId}
         isAddingStay={addMutation.isPending}
@@ -399,6 +413,7 @@ export function TripWorkspace({ tripId }: TripWorkspaceProps) {
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
       />
-    </div>
+      </div>
+    </>
   );
 }

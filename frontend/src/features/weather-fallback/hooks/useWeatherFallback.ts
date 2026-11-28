@@ -1,6 +1,11 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
@@ -46,6 +51,25 @@ export function usePlanBCandidates(tripId: number, itemId: number | null) {
   });
 }
 
+export function usePlanBHistory(tripId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['plan-b-history', tripId],
+    queryFn: () => weatherFallbackService.getPlanBHistory(tripId),
+    enabled: Number.isFinite(tripId) && tripId > 0 && enabled,
+  });
+}
+
+export function useCityWeatherBatch(cities: string[]) {
+  return useQueries({
+    queries: cities.map((city) => ({
+      queryKey: ['public-weather', city],
+      queryFn: () => weatherFallbackService.getPublicForecast(city),
+      staleTime: 15 * 60 * 1000,
+      retry: false,
+    })),
+  });
+}
+
 export function useSwapPlanB(tripId: number) {
   const queryClient = useQueryClient();
   const setActivePlanBItemId = useWorkspaceStore((s) => s.setActivePlanBItemId);
@@ -62,10 +86,13 @@ export function useSwapPlanB(tripId: number) {
       setActivePlanBItemId(null);
       queryClient.invalidateQueries({ queryKey: ['trip', tripId] });
       queryClient.invalidateQueries({ queryKey: ['centroid-stays', tripId] });
+      queryClient.invalidateQueries({ queryKey: ['plan-b-history', tripId] });
       toast.success('Đã hoán đổi sang địa điểm trong nhà thành công!');
     },
     onError: (err) => {
-      toast.error(extractError(err, 'Không thể thực hiện hoán đổi Kế hoạch B.'));
+      toast.error(
+        extractError(err, 'Không thể thực hiện hoán đổi Kế hoạch dự phòng.'),
+      );
     },
   });
 }

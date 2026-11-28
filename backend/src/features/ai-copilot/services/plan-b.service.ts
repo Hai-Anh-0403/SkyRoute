@@ -57,6 +57,23 @@ export class PlanBService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
+  async getPlanBHistory(userId: string, tripId: string) {
+    await this.requireOwnedTrip(userId, tripId);
+    const swaps = await this.swapRepo.findByTripWithDetails(tripId);
+    return swaps.map((s) => ({
+      id: Number(s.id),
+      itineraryItemId: Number(s.itineraryItemId),
+      dayNumber: s.itineraryItem?.dayNumber ?? null,
+      timeSlot: s.itineraryItem?.timeSlot ?? null,
+      originalPlaceName: s.originalPlace?.name ?? `Place #${s.originalPlaceId}`,
+      replacementPlaceName:
+        s.replacementPlace?.name ?? `Place #${s.replacementPlaceId}`,
+      rainProbabilityAtSwap: Number(s.rainProbabilityAtSwap),
+      distanceFromPrevKm: Number(s.distanceFromPrevKm),
+      createdAt: s.createdAt.toISOString(),
+    }));
+  }
+
   async getPlanBCandidates(
     userId: string,
     tripId: string,

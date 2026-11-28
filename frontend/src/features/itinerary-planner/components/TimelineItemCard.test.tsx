@@ -55,7 +55,9 @@ describe('TimelineItemCard', () => {
     expect(screen.getByText(/Ngược đường \(11\.8 km\)/)).toBeInTheDocument();
     expect(screen.getByText(/Mưa 75%/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Tìm Kế hoạch B/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Tìm Kế hoạch dự phòng/i }),
+    );
     expect(useWorkspaceStore.getState().activePlanBItemId).toBe(103);
   });
 

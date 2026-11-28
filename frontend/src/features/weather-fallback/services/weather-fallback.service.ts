@@ -2,6 +2,8 @@ import { apiClient } from '@/shared/lib/axios';
 import type { ApiResponse } from '@/shared/types/api.types';
 import type {
   PlanBCandidatesResponse,
+  PlanBHistoryItem,
+  PublicWeatherForecastResponse,
   SimulateRainRequest,
   SwapPlanBRequest,
   SwapPlanBResponse,
@@ -38,6 +40,21 @@ export const weatherFallbackService = {
     const res = await apiClient.post<ApiResponse<SwapPlanBResponse>>(
       `/trips/${tripId}/items/${itemId}/swap-plan-b`,
       payload,
+    );
+    return res.data.data;
+  },
+
+  async getPlanBHistory(tripId: number): Promise<PlanBHistoryItem[]> {
+    const res = await apiClient.get<ApiResponse<PlanBHistoryItem[]>>(
+      `/trips/${tripId}/plan-b-history`,
+    );
+    return res.data.data;
+  },
+
+  async getPublicForecast(city: string): Promise<PublicWeatherForecastResponse> {
+    const res = await apiClient.get<ApiResponse<PublicWeatherForecastResponse>>(
+      '/weather/forecast',
+      { params: { city } },
     );
     return res.data.data;
   },

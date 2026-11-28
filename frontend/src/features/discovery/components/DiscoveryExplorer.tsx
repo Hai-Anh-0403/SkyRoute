@@ -1,15 +1,16 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { PublicStaysPanel } from '@/features/stay-finder';
+import { AppHeader } from '@/shared/components/AppHeader';
 import { SKYROUTE_CITIES, resolveCityPreset } from '@/shared/lib/cities';
 import { ROUTES } from '@/shared/lib/routes';
 import { useWorkspaceStore } from '@/shared/stores/workspace.store';
 import { useRadarPlaces } from '../hooks/useRadarPlaces';
 import { useWeatherFood } from '../hooks/useWeatherFood';
 import type { DiscoveryFilters, PlaceItem } from '../types/discovery.types';
+import { AddToTripModal } from './AddToTripModal';
 import { InteractiveMap } from './InteractiveMap';
 import { MultiLayerFilterBar } from './MultiLayerFilterBar';
 import { ProximityRadarControl } from './ProximityRadarControl';
@@ -39,6 +40,15 @@ export function DiscoveryExplorer({
   });
   const [foodPresetId, setFoodPresetId] =
     useState<WeatherFoodPresetId>('cold_rainy');
+  const [placeToAdd, setPlaceToAdd] = useState<PlaceItem | null>(null);
+
+  const handlePlaceSelect = (place: PlaceItem) => {
+    if (onSelectPlace) {
+      onSelectPlace(place);
+    } else {
+      setPlaceToAdd(place);
+    }
+  };
 
   const radarAnchorCoords = useWorkspaceStore((s) => s.radarAnchorCoords);
   const radarRadiusKm = useWorkspaceStore((s) => s.radarRadiusKm);
@@ -87,20 +97,14 @@ export function DiscoveryExplorer({
       : (radarQuery.data?.data ?? []);
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href={ROUTES.HOME} className="text-lg font-bold text-sky-600">
-            SkyRoute
-          </Link>
-          <span className="text-sm text-slate-500">
-            Khám phá Radar • {cityPreset.displayName}
-          </span>
+    <div className="flex min-h-screen flex-col bg-[#FAFAF9]">
+      <AppHeader
+        leftSlot={
           <select
             aria-label="Chọn điểm đến"
             value={cityPreset.slug}
             onChange={(e) => router.push(ROUTES.EXPLORE_CITY(e.target.value))}
-            className="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:border-sky-400"
+            className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-sky-400 focus:border-sky-500 focus:outline-none"
           >
             {SKYROUTE_CITIES.map((city) => (
               <option key={city.slug} value={city.slug}>
@@ -108,22 +112,8 @@ export function DiscoveryExplorer({
               </option>
             ))}
           </select>
-        </div>
-        <div className="flex items-center gap-3 text-sm">
-          <Link
-            href={ROUTES.TRIPS}
-            className="rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white hover:bg-sky-700"
-          >
-            Lập lịch trình
-          </Link>
-          <Link
-            href={ROUTES.LOGIN}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Đăng nhập
-          </Link>
-        </div>
-      </header>
+        }
+      />
 
       <div className="grid flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-12">
         <aside className="flex flex-col gap-3 lg:col-span-5">
@@ -249,15 +239,13 @@ export function DiscoveryExplorer({
                             </span>
                           )}
                         </div>
-                        {onSelectPlace && (
-                          <button
-                            type="button"
-                            onClick={() => onSelectPlace(place)}
-                            className="font-medium text-sky-600 hover:underline"
-                          >
-                            + Thêm
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handlePlaceSelect(place)}
+                          className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                        >
+                          {onSelectPlace ? '+ Thêm' : '+ Thêm vào chuyến đi'}
+                        </button>
                       </div>
                     </div>
                   );
@@ -274,7 +262,8 @@ export function DiscoveryExplorer({
                 lng={anchor.lng}
                 presetId={foodPresetId}
                 onPresetChange={(preset) => setFoodPresetId(preset.id)}
-                onSelectPlace={onSelectPlace}
+                onSelectPlace={handlePlaceSelect}
+                actionLabel={onSelectPlace ? '+ Thêm' : '+ Thêm vào chuyến đi'}
               />
             </div>
           )}
@@ -290,10 +279,15 @@ export function DiscoveryExplorer({
           <InteractiveMap
             places={activeTab === 'stays' ? [] : places}
             showRadar={activeTab === 'radar'}
-            onSelectPlace={onSelectPlace}
+            onSelectPlace={handlePlaceSelect}
           />
         </section>
       </div>
+
+      <AddToTripModal
+        place={placeToAdd}
+        onClose={() => setPlaceToAdd(null)}
+      />
     </div>
   );
 }

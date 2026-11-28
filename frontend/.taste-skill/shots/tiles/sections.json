@@ -1,0 +1,202 @@
+{
+ "url": "http://127.0.0.1:3099/",
+ "views": {
+  "desktop": {
+   "width": 1440,
+   "height": 900,
+   "navH": 72,
+   "scrollHeight": 4500,
+   "screens": 5,
+   "sections": [
+    {
+     "n": 1,
+     "tag": "section",
+     "id": "",
+     "cls": "hero hero--centred is-still is-entered",
+     "top": 0,
+     "h": 900,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "desktop-sec-01-a.jpg",
+       "scrollY": 0
+      }
+     ]
+    },
+    {
+     "n": 2,
+     "tag": "section",
+     "id": "destinations",
+     "cls": "section",
+     "top": 900,
+     "h": 900,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "desktop-sec-02-a.jpg",
+       "scrollY": 900
+      }
+     ]
+    },
+    {
+     "n": 3,
+     "tag": "section",
+     "id": "capabilities",
+     "cls": "section",
+     "top": 1800,
+     "h": 900,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "desktop-sec-03-a.jpg",
+       "scrollY": 1800
+      }
+     ]
+    },
+    {
+     "n": 4,
+     "tag": "section",
+     "id": "moment",
+     "cls": "section statement is-live",
+     "top": 2700,
+     "h": 900,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "desktop-sec-04-a.jpg",
+       "scrollY": 2700
+      }
+     ]
+    },
+    {
+     "n": 5,
+     "tag": "footer",
+     "id": "contact",
+     "cls": "footer closing",
+     "top": 3600,
+     "h": 900,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "desktop-sec-05-a.jpg",
+       "scrollY": 3600
+      }
+     ]
+    }
+   ],
+   "consoleErrors": []
+  },
+  "mobile": {
+   "width": 390,
+   "height": 844,
+   "navH": 56,
+   "scrollHeight": 5986,
+   "screens": 7.09,
+   "sections": [
+    {
+     "n": 1,
+     "tag": "section",
+     "id": "",
+     "cls": "hero hero--centred is-still is-entered",
+     "top": 0,
+     "h": 844,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "mobile-sec-01-a.jpg",
+       "scrollY": 0
+      }
+     ]
+    },
+    {
+     "n": 2,
+     "tag": "section",
+     "id": "destinations",
+     "cls": "section",
+     "top": 844,
+     "h": 2051,
+     "hScreens": 2.43,
+     "offGrid": 363,
+     "tiles": [
+      {
+       "file": "mobile-sec-02-a.jpg",
+       "scrollY": 844
+      },
+      {
+       "file": "mobile-sec-02-b.jpg",
+       "scrollY": 1688
+      },
+      {
+       "file": "mobile-sec-02-c.jpg",
+       "scrollY": 2051
+      }
+     ]
+    },
+    {
+     "n": 3,
+     "tag": "section",
+     "id": "capabilities",
+     "cls": "section",
+     "top": 2895,
+     "h": 1155,
+     "hScreens": 1.37,
+     "offGrid": 311,
+     "tiles": [
+      {
+       "file": "mobile-sec-03-a.jpg",
+       "scrollY": 2895
+      },
+      {
+       "file": "mobile-sec-03-b.jpg",
+       "scrollY": 3206
+      }
+     ]
+    },
+    {
+     "n": 4,
+     "tag": "section",
+     "id": "moment",
+     "cls": "section statement is-live",
+     "top": 4050,
+     "h": 844,
+     "hScreens": 1,
+     "offGrid": 0,
+     "tiles": [
+      {
+       "file": "mobile-sec-04-a.jpg",
+       "scrollY": 4050
+      }
+     ]
+    },
+    {
+     "n": 5,
+     "tag": "footer",
+     "id": "contact",
+     "cls": "footer closing",
+     "top": 4894,
+     "h": 1092,
+     "hScreens": 1.29,
+     "offGrid": 248,
+     "tiles": [
+      {
+       "file": "mobile-sec-05-a.jpg",
+       "scrollY": 4894
+      },
+      {
+       "file": "mobile-sec-05-b.jpg",
+       "scrollY": 5142
+      }
+     ]
+    }
+   ],
+   "consoleErrors": []
+  }
+ },
+ "at": "2026-11-28T03:14:50.849Z"
+}

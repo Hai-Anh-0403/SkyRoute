@@ -25,14 +25,14 @@ export function PlanBSwapDrawer({ tripId }: PlanBSwapDrawerProps) {
   return (
     <div
       role="dialog"
-      aria-label="Gợi ý Kế hoạch B trong nhà"
+      aria-label="Gợi ý Kế hoạch dự phòng trong nhà"
       className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-slate-200 bg-slate-50 shadow-2xl"
     >
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
         <div>
           <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600">
             <CloudRain className="h-3.5 w-3.5" />
-            Kế hoạch B thích ứng thời tiết
+            Kế hoạch dự phòng thích ứng thời tiết
           </span>
           <h3 className="mt-0.5 text-base font-bold text-slate-900">
             {data?.conflictedItem.placeName ?? 'Đang tìm điểm thay thế...'}
@@ -40,7 +40,7 @@ export function PlanBSwapDrawer({ tripId }: PlanBSwapDrawerProps) {
         </div>
         <button
           type="button"
-          aria-label="Đóng Kế hoạch B"
+          aria-label="Đóng Kế hoạch dự phòng"
           onClick={() => setActivePlanBItemId(null)}
           className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
         >
@@ -93,7 +93,7 @@ export function PlanBSwapDrawer({ tripId }: PlanBSwapDrawerProps) {
                     itemId: activePlanBItemId,
                     payload: {
                       replacementPlaceId: placeId,
-                      note: `Hoán đổi Kế hoạch B tránh mưa ${data.conflictedItem.rainProbability}%`,
+                      note: `Hoán đổi Kế hoạch dự phòng tránh mưa ${data.conflictedItem.rainProbability}%`,
                     },
                   })
                 }

@@ -31,6 +31,19 @@ import { PlanBService } from './services/plan-b.service';
 export class AiCopilotController {
   constructor(private readonly planBService: PlanBService) {}
 
+  @Get(':id/plan-b-history')
+  @UseGuards(TripOwnerGuard)
+  @ApiOperation({
+    summary: 'List Plan B weather fallback swap history for an owned trip',
+  })
+  @ApiResponse({ status: 200, description: 'Plan B swap audit history' })
+  getPlanBHistory(
+    @CurrentUser() user: AuthUserPayload,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.planBService.getPlanBHistory(user.userId, String(id));
+  }
+
   @Get(':id/items/:itemId/plan-b-candidates')
   @UseGuards(TripOwnerGuard)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })

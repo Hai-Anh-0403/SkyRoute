@@ -56,3 +56,30 @@ export interface SwapPlanBResponse {
   };
   newCentroidLocation: Coordinates | null;
 }
+
+export interface PlanBHistoryItem {
+  id: number;
+  itineraryItemId: number;
+  dayNumber: number | null;
+  timeSlot: TimeSlotType | null;
+  originalPlaceName: string;
+  replacementPlaceName: string;
+  rainProbabilityAtSwap: number;
+  distanceFromPrevKm: number;
+  createdAt: string;
+}
+
+export interface PublicSlotWeather {
+  timeSlot: TimeSlotType;
+  temperatureC: number;
+  rainProbability: number;
+  weatherCode: number;
+  conditionTag: string;
+}
+
+export interface PublicWeatherForecastResponse {
+  city: string;
+  date: string;
+  source: 'redis' | 'open-meteo' | 'snapshot';
+  slots: PublicSlotWeather[];
+}

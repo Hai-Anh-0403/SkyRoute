@@ -36,3 +36,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local taste-skill kit & headless Chrome verification artifacts
+taste-skill/
+.taste-skill/chrome-*/
+.taste-skill/shots/

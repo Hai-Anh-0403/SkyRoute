@@ -155,7 +155,7 @@ export function MapCanvas({
                 }}
               >
                 <Tooltip direction="top">
-                  Plan B: {candidate.name} ({candidate.distanceFromPrevKm.toFixed(1)} km)
+                  Dự phòng: {candidate.name} ({candidate.distanceFromPrevKm.toFixed(1)} km)
                 </Tooltip>
               </CircleMarker>
             ))}
